@@ -1076,13 +1076,13 @@ nav {
           <label class="form-label">Amount to Borrow</label>
           <div class="input-wrap">
             <input type="number" id="borrow-amount-input" class="input" placeholder="0.00" min="0" step="0.01">
-            <div class="input-suffix">USDC</div>
+            <div class="input-suffix">cWETH</div>
           </div>
         </div>
         <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:8px;font-size:12px">
           <div style="display:flex;justify-content:space-between;margin-bottom:6px">
             <span style="color:var(--text2)">Max Borrow</span>
-            <span style="font-weight:600">— USDC</span>
+            <span style="font-weight:600">— cWETH</span>
           </div>
           <div style="display:flex;justify-content:space-between">
             <span style="color:var(--text2)">Interest Rate</span>
@@ -1108,14 +1108,14 @@ nav {
         <div style="margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;font-size:12px">
           <div style="display:flex;justify-content:space-between">
             <span style="color:var(--text2)">Outstanding Debt</span>
-            <span style="font-weight:600;color:var(--red)">— USDC</span>
+            <span style="font-weight:600;color:var(--red)">— cWETH</span>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Amount to Repay</label>
           <div class="input-wrap">
             <input type="number" id="repay-amount-input" class="input" placeholder="0.00" min="0" step="0.01">
-            <div class="input-suffix">USDC</div>
+            <div class="input-suffix">cWETH</div>
           </div>
         </div>
         <button class="btn btn-yellow" onclick="handleRepay()">Repay Debt</button>
@@ -1129,7 +1129,7 @@ nav {
       <div class="page-title">Markets</div>
       <div class="page-sub">Protocol statistics and market data</div>
     </div>
-    <div class="split-grid">
+    <div style="max-width: 400px;">
       <div class="card">
         <div class="card-header">
           <div class="card-title">cWETH Market</div>
@@ -1142,27 +1142,11 @@ nav {
           </div>
           <div>
             <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Collateral Factor</div>
-            <div style="font-size:18px;font-weight:600">75%</div>
+            <div style="font-size:18px;font-weight:600">66%</div>
           </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">USDC Market</div>
-          <span class="badge badge-green">Active</span>
-        </div>
-        <div class="card-body">
-          <div style="margin-bottom:12px">
-            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Total Borrowed</div>
-            <div style="font-size:22px;font-weight:700;color:var(--red)">— USDC</div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Borrow APY</div>
-            <div style="font-size:18px;font-weight:600;color:var(--accent)">8.5%</div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1180,8 +1164,106 @@ let provider = null;
 let signer = null;
 let txHistory = [];
 
+// Transaction logging
+function addTransactionLog(action, amount, status, hash) {
+  const tx = {
+    id: Date.now(),
+    action,
+    amount,
+    status,
+    hash,
+    timestamp: new Date().toLocaleTimeString()
+  }
+  txHistory.unshift(tx) // Add to beginning
+  if (txHistory.length > 10) txHistory.pop() // Keep only 10 latest
+  updateTransactionFeed()
+}
+
+function updateTransactionFeed() {
+  const feed = document.getElementById('tx-feed')
+  if (!feed) return
+
+  if (txHistory.length === 0) {
+    feed.innerHTML = '<div style="text-align:center;color:var(--text3);font-size:13px;padding:16px">No transactions yet</div>'
+    document.getElementById('tx-count').textContent = '0'
+    return
+  }
+
+  feed.innerHTML = txHistory.map(tx => `
+    <div class="tx-item">
+      <div class="tx-dot ${tx.status}"></div>
+      <div class="tx-label">${tx.action} ${tx.amount} cWETH</div>
+      <div class="tx-status">${tx.timestamp}</div>
+    </div>
+  `).join('')
+
+  document.getElementById('tx-count').textContent = txHistory.length.toString()
+}
+
 const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
 const SEPOLIA_RPC = 'https://sepolia.drpc.org';
+
+// ─── DATA FETCHING ───
+
+async function fetchContractStats() {
+  try {
+    if (!provider) return
+
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider)
+    const [poolBalance, positionsCount] = await contract.getStats()
+
+    // Update landing page stats
+    document.getElementById('ls-pool').textContent = `${ethers.formatUnits(poolBalance, 8)} cWETH`
+    document.getElementById('ls-positions').textContent = positionsCount.toString()
+
+    // Update markets page
+    const totalCollateralEl = document.querySelector('#page-markets .card-body div[style*="font-size:22px"]')
+    if (totalCollateralEl) {
+      totalCollateralEl.textContent = `${ethers.formatUnits(poolBalance, 8)} cWETH`
+    }
+  } catch (err) {
+    console.error('[STATS] Failed to fetch contract stats:', err)
+  }
+}
+
+async function fetchUserPosition() {
+  try {
+    if (!provider || !currentUser) return
+
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider)
+    const [collateral, debt] = await contract.getPositionMeta(currentUser)
+    const hasPos = collateral > 0 || debt > 0
+
+    // Update dashboard metrics
+    const collateralFormatted = ethers.formatUnits(collateral, 8)
+    const debtFormatted = ethers.formatUnits(debt, 8)
+
+    document.getElementById('dash-collateral').textContent = hasPos ? `${collateralFormatted} cWETH` : '—'
+    document.getElementById('dash-debt').textContent = hasPos ? `${debtFormatted} cWETH` : '—'
+
+    // Calculate max borrow (66% of collateral)
+    const maxBorrow = (collateral * 66n) / 100n
+    document.getElementById('dash-max-borrow').textContent = hasPos ? `${ethers.formatUnits(maxBorrow, 8)} cWETH` : '—'
+
+    // Show/hide position cards
+    document.getElementById('dash-no-pos').style.display = hasPos ? 'none' : 'block'
+    document.getElementById('dash-has-pos').style.display = hasPos ? 'block' : 'none'
+
+    if (hasPos) {
+      document.getElementById('pos-collateral').textContent = `${collateralFormatted} cWETH`
+      document.getElementById('pos-debt').textContent = `${debtFormatted} cWETH`
+    }
+  } catch (err) {
+    console.error('[POSITION] Failed to fetch user position:', err)
+  }
+}
+
+async function refreshDashboardData() {
+  await Promise.all([
+    fetchContractStats(),
+    fetchUserPosition()
+  ])
+}
 
 // ─── WALLET CONNECTION ───
 
@@ -1210,6 +1292,7 @@ async function connectWallet() {
 
     await checkNetwork();
     updateUI();
+    await refreshDashboardData();
     showPage('dashboard');
     showToast('Wallet connected!', 'success');
   } catch (error) {
@@ -1416,6 +1499,8 @@ const CONTRACT_ABI = [
   'function closePosition() external',
   'function getCollateral(address user) external view returns (uint256)',
   'function getDebt(address user) external view returns (uint256)',
+  'function getStats() external view returns (uint256 poolBalance, uint256 positionsCount)',
+  'function getPositionMeta(address user) external view returns (uint256 collateral, uint256 debt)',
 ]
 const BACKEND_URL = 'https://veil-backend-2gki.onrender.com'
 
@@ -1464,16 +1549,16 @@ async function handleDeposit() {
     return
   }
 
-  const amountInt = Math.round(rawAmount)
-  if (amountInt <= 0) {
-    showToast('Amount must be at least 1 cWETH', 'error')
+  const amountWei = ethers.parseUnits(rawAmount.toString(), 8)
+  if (amountWei <= 0) {
+    showToast('Enter a valid amount', 'error')
     return
   }
 
   showFheModal('Depositing Collateral', 'Encrypting amount with FHE...')
 
   try {
-    console.log('[DEPOSIT] amount raw:', rawAmount, '→ integer:', amountInt)
+    console.log('[DEPOSIT] amount raw:', rawAmount, '→ wei:', amountWei.toString())
     advanceFheStep(2)
 
     const userAddress = await signer.getAddress()
@@ -1485,7 +1570,7 @@ async function handleDeposit() {
     const encryptRes = await fetch(`${BACKEND_URL}/encrypt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: amountInt, contractAddress: CONTRACT_ADDRESS, userAddress }),
+      body: JSON.stringify({ amount: amountWei.toString(), contractAddress: CONTRACT_ADDRESS, userAddress }),
     })
     const encryptBody = await encryptRes.json()
     if (!encryptRes.ok || !encryptBody.success) {
@@ -1501,7 +1586,7 @@ async function handleDeposit() {
     const handleBytes32 = `0x${handleHex}`
 
     console.log('[DEPOSIT] handle:', handleBytes32, '| inputProof:', inputProof?.slice(0, 20), '...')
-    console.log('[DEPOSIT] plainAmount:', amountInt)
+    console.log('[DEPOSIT] plainAmount:', amountWei.toString())
 
     advanceFheStep(3)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
@@ -1511,8 +1596,8 @@ async function handleDeposit() {
     console.log('[DEPOSIT] hasPosition:', hasPos, '| calling:', hasPos ? 'addCollateral' : 'openPosition')
 
     const tx = hasPos
-      ? await contract.addCollateral(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 1_000_000n })
-      : await contract.openPosition(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 1_000_000n })
+      ? await contract.addCollateral(handleBytes32, inputProof, amountWei, { gasLimit: 1_000_000n })
+      : await contract.openPosition(handleBytes32, inputProof, amountWei, { gasLimit: 1_000_000n })
     console.log('[DEPOSIT] tx sent:', tx.hash)
 
     advanceFheStep(4)
@@ -1520,8 +1605,11 @@ async function handleDeposit() {
     console.log('[DEPOSIT] confirmed block:', receipt.blockNumber)
 
     closeFheModal()
-    showToast(`Deposited ${amountInt} cWETH! 🔒`, 'success')
+    const formattedAmount = ethers.formatUnits(amountWei, 8)
+    addTransactionLog('Deposit', formattedAmount, 'success', tx.hash)
+    showToast(`Deposited ${formattedAmount} cWETH! 🔒`, 'success')
     input.value = ''
+    refreshDashboardData()
     showPage('dashboard')
 
   } catch (err) {
@@ -1541,19 +1629,38 @@ async function handleBorrow() {
   const input = document.getElementById('borrow-amount-input')
   const rawAmount = parseFloat(input?.value)
   if (!rawAmount || rawAmount <= 0) { showToast('Enter a valid amount', 'error'); return }
-  const amountInt = Math.round(rawAmount)
-  if (amountInt <= 0) { showToast('Amount must be at least 1', 'error'); return }
+  const amountWei = ethers.parseUnits(rawAmount.toString(), 8)
+  if (amountWei <= 0) { showToast('Enter a valid amount', 'error'); return }
 
-  showFheModal('Borrowing USDC', 'Encrypting borrow amount with FHE...')
+  // Check 66% LTV limit
+  try {
+    const userAddress = await signer.getAddress()
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
+    const [collateral, currentDebt] = await contract.getPositionMeta(userAddress)
+    const totalDebt = currentDebt + amountWei
+    const maxBorrow = (collateral * 66n) / 100n
+
+    if (totalDebt > maxBorrow) {
+      const maxBorrowFormatted = ethers.formatUnits(maxBorrow - currentDebt, 8)
+      showToast(`Exceeds 66% LTV limit. Max additional borrow: ${maxBorrowFormatted} cWETH`, 'error')
+      return
+    }
+  } catch (err) {
+    console.error('[BORROW] LTV check failed:', err)
+    showToast('Failed to check borrowing limit', 'error')
+    return
+  }
+
+  showFheModal('Borrowing cWETH', 'Encrypting borrow amount with FHE...')
   try {
     advanceFheStep(2)
     const userAddress = await signer.getAddress()
-    console.log('[BORROW] userAddress:', userAddress, '| amount:', amountInt)
+    console.log('[BORROW] userAddress:', userAddress, '| amount:', amountWei.toString())
 
     const encryptRes = await fetch(`${BACKEND_URL}/encrypt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: amountInt, contractAddress: CONTRACT_ADDRESS, userAddress }),
+      body: JSON.stringify({ amount: amountWei.toString(), contractAddress: CONTRACT_ADDRESS, userAddress }),
     })
     const encryptBody = await encryptRes.json()
     if (!encryptRes.ok || !encryptBody.success) throw new Error(`Encrypt failed: ${encryptBody.error || encryptRes.status}`)
@@ -1564,7 +1671,7 @@ async function handleBorrow() {
 
     advanceFheStep(3)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
-    const tx = await contract.borrow(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 2_000_000n })
+    const tx = await contract.borrow(handleBytes32, inputProof, amountWei, { gasLimit: 2_000_000n })
     console.log('[BORROW] tx sent:', tx.hash)
 
     advanceFheStep(4)
@@ -1572,8 +1679,11 @@ async function handleBorrow() {
     console.log('[BORROW] confirmed block:', receipt.blockNumber)
 
     closeFheModal()
-    showToast(`Borrowed ${amountInt} USDC!`, 'success')
+    const formattedAmount = ethers.formatUnits(amountWei, 8)
+    addTransactionLog('Borrow', formattedAmount, 'success', tx.hash)
+    showToast(`Borrowed ${formattedAmount} cWETH!`, 'success')
     input.value = ''
+    refreshDashboardData()
     showPage('dashboard')
   } catch (err) {
     const msg = decodeRevertError(err)
@@ -1590,19 +1700,19 @@ async function handleRepay() {
   const input = document.getElementById('repay-amount-input')
   const rawAmount = parseFloat(input?.value)
   if (!rawAmount || rawAmount <= 0) { showToast('Enter a valid amount', 'error'); return }
-  const amountInt = Math.round(rawAmount)
-  if (amountInt <= 0) { showToast('Amount must be at least 1', 'error'); return }
+  const amountWei = ethers.parseUnits(rawAmount.toString(), 8)
+  if (amountWei <= 0) { showToast('Enter a valid amount', 'error'); return }
 
   showFheModal('Repaying Debt', 'Encrypting repay amount with FHE...')
   try {
     advanceFheStep(2)
     const userAddress = await signer.getAddress()
-    console.log('[REPAY] userAddress:', userAddress, '| amount:', amountInt)
+    console.log('[REPAY] userAddress:', userAddress, '| amount:', amountWei.toString())
 
     const encryptRes = await fetch(`${BACKEND_URL}/encrypt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: amountInt, contractAddress: CONTRACT_ADDRESS, userAddress }),
+      body: JSON.stringify({ amount: amountWei.toString(), contractAddress: CONTRACT_ADDRESS, userAddress }),
     })
     const encryptBody = await encryptRes.json()
     if (!encryptRes.ok || !encryptBody.success) throw new Error(`Encrypt failed: ${encryptBody.error || encryptRes.status}`)
@@ -1613,7 +1723,7 @@ async function handleRepay() {
 
     advanceFheStep(3)
     const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
-    const tx = await contract.repay(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 2_000_000n })
+    const tx = await contract.repay(handleBytes32, inputProof, amountWei, { gasLimit: 2_000_000n })
     console.log('[REPAY] tx sent:', tx.hash)
 
     advanceFheStep(4)
@@ -1621,8 +1731,11 @@ async function handleRepay() {
     console.log('[REPAY] confirmed block:', receipt.blockNumber)
 
     closeFheModal()
-    showToast(`Repaid ${amountInt} USDC!`, 'success')
+    const formattedAmount = ethers.formatUnits(amountWei, 8)
+    addTransactionLog('Repay', formattedAmount, 'success', tx.hash)
+    showToast(`Repaid ${formattedAmount} cWETH!`, 'success')
     input.value = ''
+    refreshDashboardData()
     showPage('dashboard')
   } catch (err) {
     const msg = decodeRevertError(err)
@@ -1645,7 +1758,9 @@ async function handleClosePosition() {
     advanceFheStep(4)
     await tx.wait()
     closeFheModal()
+    addTransactionLog('Close Position', '—', 'success', tx.hash)
     showToast('Position closed!', 'success')
+    refreshDashboardData()
     showPage('dashboard')
   } catch (err) {
     const msg = decodeRevertError(err)
@@ -1845,6 +1960,7 @@ window.addEventListener('load', async () => {
         console.log('[LOAD] auto-reconnected | signer:', !!signer, '| address:', currentUser)
         await checkNetwork();
         updateUI();
+        await refreshDashboardData();
         showPage('dashboard');
       }
     } catch (e) {
@@ -1865,6 +1981,9 @@ window.addEventListener('load', async () => {
       window.location.reload();
     });
   }
+
+  // Fetch protocol stats on load (even without wallet)
+  fetchContractStats();
 });
 </script>
 </body>
