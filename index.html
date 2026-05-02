@@ -1724,8 +1724,13 @@ async function loadCwethBalance() {
     }
     console.log('[BALANCE] decrypted response:', decryptBody)
 
-    const balance = decryptBody.balance ?? decryptBody.value ?? decryptBody.result ?? '—'
-    el.textContent = balance.toString()
+    const rawBalance = decryptBody.balance ?? decryptBody.value ?? decryptBody.result
+    if (rawBalance !== undefined && rawBalance !== '—' && rawBalance !== null) {
+      const formattedBalance = ethers.formatUnits(rawBalance.toString(), 8)
+      el.textContent = formattedBalance
+    } else {
+      el.textContent = '—'
+    }
     if (usdEl) usdEl.textContent = 'cWETH (decrypted via FHE)'
 
   } catch (err) {
