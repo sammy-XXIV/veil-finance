@@ -717,10 +717,10 @@ nav {
 
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
-  .nav-links { display: none; }
-  .hamburger { display: flex; }
+  .nav-links { display: none !important; }
+  .hamburger { display: flex !important; }
   .nav-price-pill { display: none !important; }
-  .btn-connect { display: none; }
+  .btn-connect { display: none !important; }
   .address-chip { display: none !important; }
   .metrics-grid { grid-template-columns: 1fr 1fr; }
   .split-grid { grid-template-columns: 1fr; }
@@ -1292,6 +1292,7 @@ async function connectWallet() {
 
     await checkNetwork();
     updateUI();
+    closeMobileNav();
     await refreshDashboardData();
     showPage('dashboard');
     showToast('Wallet connected!', 'success');
@@ -1309,6 +1310,7 @@ async function disconnectWallet() {
   window.provider = null;
   window._state = { signer: null, provider: null, currentUser: null };
   updateUI();
+  closeMobileNav();
   showPage('connect');
   closeModal('account-modal');
   showToast('Wallet disconnected', 'success');
@@ -1385,6 +1387,7 @@ function showPage(pageName) {
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
   if (!modal) { console.error('[MODAL] not found:', modalId); return; }
+  closeMobileNav(); // Ensure mobile menu closes when modal opens
   modal.removeAttribute('style');
   modal.style.cssText = [
     'display:flex!important',
