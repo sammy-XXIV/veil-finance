@@ -1,1 +1,1864 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- updated 2026-05-02-fix -->
+<head>
+<meta charset="UTF-8">
+<script>
+// Override fetch AND XHR to fix Zama relayer /v1/keyurl -> /keyurl
+(function() {
+  // Fix fetch
+  const _fetch = window.fetch.bind(window);
+  window.fetch = async function(resource, init) {
+    if (typeof resource === 'string' && resource.includes('/v1/keyurl')) {
+      const fixed = resource.replace('/v1/keyurl', '/keyurl');
+      console.log('[VEIL] Fixed fetch URL:', fixed);
+      return _fetch(fixed, init);
+    }
+    if (resource instanceof Request && resource.url.includes('/v1/keyurl')) {
+      const fixed = new Request(resource.url.replace('/v1/keyurl', '/keyurl'), resource);
+      console.log('[VEIL] Fixed fetch Request:', fixed.url);
+      return _fetch(fixed, init);
+    }
+    return _fetch(resource, init);
+  };
 
+  // Fix XMLHttpRequest
+  const _open = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+    if (typeof url === 'string' && url.includes('/v1/keyurl')) {
+      url = url.replace('/v1/keyurl', '/keyurl');
+      console.log('[VEIL] Fixed XHR URL:', url);
+    }
+    return _open.call(this, method, url, ...rest);
+  };
+})();
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>VEIL Finance — Confidential Lending v2.1 FRESH</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700;900&family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- ethers.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<!-- Zama Relayer SDK -->
+<script src="relayer-sdk.js" type="text/javascript"></script>
+
+<style>
+:root {
+  --bg: #050506;
+  --surface: #0d0d10;
+  --surface2: #121215;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.1);
+  --text: #f0f0f5;
+  --text2: #7070a0;
+  --text3: #303045;
+  --accent: #f5c542;
+  --accent2: #5eead4;
+  --green: #10b981;
+  --red: #ef4444;
+  --yellow: #f5c542;
+  --purple: #a78bfa;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+html { overflow-x: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Geist', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(245,197,66,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245,197,66,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── NAV ── */
+nav {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 60px;
+  background: rgba(5,5,6,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  z-index: 1000;
+}
+
+.nav-logo {
+  font-family: 'Instrument Serif', serif;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+}
+
+.nav-logo span { color: var(--accent); }
+
+.nav-links {
+  display: flex;
+  gap: 4px;
+}
+
+.nav-link {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 13px;
+  font-family: 'Geist', sans-serif;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.nav-link:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+.nav-link.active { color: var(--text); background: rgba(255,255,255,0.08); }
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-price-pill {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: 'Geist Mono', monospace;
+}
+
+.nav-price-pill .price { color: var(--accent); font-weight: 600; }
+.nav-price-pill .divider { width: 1px; height: 12px; background: var(--border2); }
+.nav-price-pill .bal { color: var(--text2); }
+
+.btn-connect {
+  padding: 7px 16px;
+  background: var(--accent);
+  color: #050506;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Geist', sans-serif;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.btn-connect:hover { opacity: 0.85; }
+
+.address-chip {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  color: var(--text2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: none;
+  transition: all 0.15s;
+}
+.address-chip:hover { color: var(--text); border-color: var(--border2); }
+
+.hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  padding: 6px;
+  flex-shrink: 0;
+  z-index: 9001;
+}
+.hamburger span {
+  width: 20px; height: 2px;
+  background: var(--text);
+  border-radius: 1px;
+}
+
+/* ── MOBILE NAV ── */
+.mobile-nav {
+  display: none;
+  position: fixed;
+  top: 60px; left: 0; right: 0;
+  background: rgba(5,5,6,0.97);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  z-index: 999;
+  flex-direction: column;
+  gap: 4px;
+}
+.mobile-nav.open { display: flex; }
+.mobile-nav-link {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-family: 'Geist', sans-serif;
+  font-size: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.mobile-nav-link:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+/* ── WRONG NETWORK ── */
+#wrong-network {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(5,5,6,0.96);
+  z-index: 8000;
+  /* modals use z-index 9500 and will appear above this */
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 24px;
+}
+
+/* ── PAGES ── */
+.page-wrapper { padding-top: 60px; min-height: 100vh; position: relative; z-index: 1; }
+.app-page { display: none; padding: 24px; max-width: 900px; margin: 0 auto; width: 100%; }
+.app-page.active { display: block; }
+
+/* ── LANDING ── */
+#page-connect { max-width: 100%; width: 100%; padding: 0; margin: 0; }
+
+.landing {
+  min-height: calc(100vh - 60px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 40px 24px;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
+.landing-glow {
+  position: absolute;
+  width: 600px; height: 600px;
+  max-width: 100vw;
+  background: radial-gradient(circle, rgba(245,197,66,0.06) 0%, transparent 70%);
+  pointer-events: none;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.landing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(245,197,66,0.08);
+  border: 1px solid rgba(245,197,66,0.2);
+  padding: 5px 14px;
+  border-radius: 20px;
+  margin-bottom: 28px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.landing-badge::before {
+  content: '';
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: pulse 2s ease infinite;
+}
+
+@keyframes pulse {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:0.4; transform:scale(0.8); }
+}
+
+.landing h1 {
+  font-family: 'Instrument Serif', serif;
+  font-size: clamp(42px, 8vw, 80px);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -2px;
+  margin-bottom: 20px;
+}
+
+.landing h1 .accent { color: var(--accent); font-style: italic; }
+
+.landing p {
+  font-size: 16px;
+  color: var(--text2);
+  max-width: 480px;
+  line-height: 1.7;
+  margin-bottom: 36px;
+  font-weight: 300;
+}
+
+.landing-btns {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 60px;
+}
+
+.btn-primary {
+  padding: 12px 28px;
+  background: var(--accent);
+  color: #050506;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Geist', sans-serif;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-primary:hover { opacity: 0.85; }
+
+.btn-outline {
+  padding: 12px 28px;
+  background: transparent;
+  color: var(--text2);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Geist', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.btn-outline:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+.landing-stats {
+  display: flex;
+  gap: 48px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.landing-stat-value {
+  font-family: 'Instrument Serif', serif;
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+.landing-stat-label {
+  font-size: 12px;
+  color: var(--text2);
+  font-family: 'Geist Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.card-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.card-body { padding: 20px; }
+
+/* ── PAGE HEADER ── */
+.page-header { margin-bottom: 24px; }
+.page-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 28px;
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+.page-sub { font-size: 13px; color: var(--text2); }
+
+/* ── METRICS GRID ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.metric {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'Geist Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.metric-value {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.metric-sub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* ── SPLIT GRID ── */
+.split-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* ── FORM ── */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+.form-hint { color: var(--text3); font-size: 11px; }
+
+.input-wrap { position: relative; }
+.input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px 48px 10px 14px;
+  color: var(--text);
+  font-size: 15px;
+  font-family: 'Geist', sans-serif;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus { border-color: var(--accent); }
+.input-suffix {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  font-size: 12px;
+  font-family: 'Geist Mono', monospace;
+  pointer-events: none;
+}
+
+/* ── BUTTONS ── */
+.btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Geist', sans-serif;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.85; }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-yellow { background: var(--accent); color: #050506; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-red { background: var(--red); color: #fff; }
+.btn-ghost {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+
+/* ── BADGE ── */
+.badge {
+  font-family: 'Geist Mono', monospace;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.badge-yellow { color: var(--accent); background: rgba(245,197,66,0.1); border: 1px solid rgba(245,197,66,0.2); }
+.badge-green { color: var(--green); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.2); }
+.badge-red { color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); }
+
+/* ── ALERT ── */
+.alert {
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.alert-info { background: rgba(94,234,212,0.05); border: 1px solid rgba(94,234,212,0.15); color: var(--text2); }
+.alert-warn { background: rgba(245,197,66,0.05); border: 1px solid rgba(245,197,66,0.15); color: var(--text2); }
+.alert-success { background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.15); color: var(--text2); }
+
+/* ── POS ITEMS ── */
+.pos-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.pos-item:last-child { border-bottom: none; }
+.pos-item-label { font-size: 12px; color: var(--text2); }
+.pos-item-value { font-size: 14px; font-weight: 600; text-align: right; }
+.pos-item-sub { font-size: 11px; color: var(--text3); text-align: right; margin-top: 2px; }
+
+/* ── TX FEED ── */
+.tx-feed { display: flex; flex-direction: column; gap: 8px; }
+.tx-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.tx-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.tx-dot.pending { background: var(--yellow); animation: pulse 1s ease infinite; }
+.tx-dot.success { background: var(--green); }
+.tx-dot.fail { background: var(--red); }
+.tx-label { flex: 1; color: var(--text2); }
+.tx-status { color: var(--text3); font-family: 'Geist Mono', monospace; }
+
+/* ── FHE PROGRESS MODAL ── */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%; height: 100%;
+  background: rgba(5,5,6,0.9);
+  z-index: 9500;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+}
+.modal-overlay.open { display: flex !important; }
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 28px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.modal-title {
+  font-family: 'Instrument Serif', serif;
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+.modal-sub { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+
+.fhe-steps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+
+.fhe-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: all 0.3s;
+  opacity: 0.4;
+}
+.fhe-step.active { opacity: 1; border-color: var(--accent); background: rgba(245,197,66,0.04); }
+.fhe-step.done { opacity: 1; border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.04); }
+.fhe-step.error { opacity: 1; border-color: rgba(239,68,68,0.3); }
+
+.fhe-step-icon { font-size: 18px; width: 28px; text-align: center; flex-shrink: 0; }
+.fhe-step-title { font-size: 13px; font-weight: 600; }
+.fhe-step-desc { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: 'Geist Mono', monospace; }
+
+.fhe-timer { font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--text3); text-align: center; }
+
+/* ── ACCOUNT MODAL ── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 20px;
+  cursor: pointer;
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-close:hover { background: rgba(255,255,255,0.06); }
+
+/* ── TOAST ── */
+#toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.toast {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: slideUp 0.3s ease;
+  white-space: nowrap;
+}
+.toast.out { animation: slideDown 0.3s ease forwards; }
+
+@keyframes slideUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slideDown { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(10px); } }
+
+.toast-error { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+
+/* ── SDK STATUS ── */
+.sdk-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: 'Geist Mono', monospace;
+  color: var(--text3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--surface2);
+}
+.sdk-dot { width: 6px; height: 6px; border-radius: 50%; }
+.sdk-dot.loading { background: var(--yellow); animation: pulse 1s ease infinite; }
+.sdk-dot.ready { background: var(--green); }
+.sdk-dot.error { background: var(--red); }
+
+/* ── BORROW LIMIT BAR ── */
+.limit-bar-wrap { margin: 12px 0; }
+.limit-bar-bg { height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+.limit-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+
+/* ── BUTTON ROW ── */
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .hamburger { display: flex; }
+  .nav-price-pill { display: none !important; }
+  .btn-connect { display: none; }
+  .address-chip { display: none !important; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .split-grid { grid-template-columns: 1fr; }
+  .app-page { padding: 16px; }
+  .page-wrapper { overflow-x: hidden; }
+  .landing-stats { gap: 24px; }
+  .modal { padding: 20px; }
+  .toast { white-space: normal; max-width: calc(100vw - 32px); text-align: center; }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .btn-connect { padding: 6px 10px; font-size: 11px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav { padding: 0 12px; gap: 8px; }
+  .nav-logo { font-size: 18px; }
+  .address-chip { font-size: 10px; padding: 5px 8px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+  .landing-stats { gap: 20px; flex-wrap: wrap; justify-content: center; }
+  .landing-stat-value { font-size: 22px; }
+  .btn-row { grid-template-columns: 1fr; }
+  .landing h1 { letter-spacing: -1px; }
+  .landing p { font-size: 14px; }
+  .landing { align-items: center; padding: 40px 20px; }
+  .landing-badge, .landing h1, .landing p, .landing-btns, .landing-stats { align-self: center; text-align: center; width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
+
+<!-- WRONG NETWORK -->
+<div id="wrong-network">
+  <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+  <div style="font-family:'Instrument Serif',serif;font-size:28px;margin-bottom:8px">Wrong Network</div>
+  <div style="color:var(--text2);font-size:14px;margin-bottom:24px;max-width:340px">VEIL Finance runs on Sepolia Testnet only. Please switch your wallet to continue.</div>
+  <button onclick="switchToSepolia()" class="btn-primary">Switch to Sepolia</button>
+</div>
+
+<!-- FHE PROGRESS MODAL -->
+<div class="modal-overlay" id="fhe-modal">
+  <div class="modal">
+    <div class="modal-title" id="fhe-modal-title">Processing</div>
+    <div class="modal-sub" id="fhe-modal-sub">Please wait...</div>
+    <div class="fhe-steps" id="fhe-steps">
+      <div class="fhe-step" id="fhe-step-1">
+        <div class="fhe-step-icon">⏳</div>
+        <div>
+          <div class="fhe-step-title">Initializing SDK</div>
+          <div class="fhe-step-desc">Loading FHE library</div>
+        </div>
+      </div>
+      <div class="fhe-step" id="fhe-step-2">
+        <div class="fhe-step-icon">🔒</div>
+        <div>
+          <div class="fhe-step-title">Generating FHE proof</div>
+          <div class="fhe-step-desc">Zama coprocessor encrypting</div>
+        </div>
+      </div>
+      <div class="fhe-step" id="fhe-step-3">
+        <div class="fhe-step-icon">✍️</div>
+        <div>
+          <div class="fhe-step-title">Sign transaction</div>
+          <div class="fhe-step-desc">Approve in wallet</div>
+        </div>
+      </div>
+      <div class="fhe-step" id="fhe-step-4">
+        <div class="fhe-step-icon">⛓️</div>
+        <div>
+          <div class="fhe-step-title">Confirming on Sepolia</div>
+          <div class="fhe-step-desc">Waiting for block</div>
+        </div>
+      </div>
+    </div>
+    <div class="fhe-timer" id="fhe-timer">0s elapsed</div>
+  </div>
+</div>
+
+<!-- ACCOUNT MODAL -->
+<div class="modal-overlay" id="account-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" style="font-size:18px">Account</div>
+      <button class="modal-close" onclick="closeModal('account-modal')">×</button>
+    </div>
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="font-size:10px;color:var(--text3);font-family:'Geist Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Connected</div>
+      <div style="font-family:'Geist Mono',monospace;font-size:12px;word-break:break-all" id="account-full-addr"></div>
+    </div>
+    <div class="btn-row" style="margin-top:0;margin-bottom:10px">
+      <button onclick="copyAddress();closeModal('account-modal')" class="btn btn-ghost" style="font-size:12px;padding:9px">Copy Address</button>
+      <a id="account-etherscan" href="#" target="_blank" style="text-decoration:none">
+        <button class="btn btn-ghost" style="font-size:12px;padding:9px;width:100%">Etherscan ↗</button>
+      </a>
+    </div>
+    <button onclick="disconnectWallet()" class="btn btn-red" style="font-size:13px">Disconnect</button>
+  </div>
+</div>
+
+<!-- BALANCE MODAL v2026-05-02-001 -->
+<div class="modal-overlay" id="balance-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" style="font-size:18px">cWETH Balance</div>
+      <button class="modal-close" onclick="closeModal('balance-modal')">×</button>
+    </div>
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:11px;color:var(--text3);font-family:'Geist Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Your Wallet Balance</div>
+      <div id="balance-modal-value" style="font-family:'Instrument Serif',serif;font-size:42px;color:var(--accent);margin-bottom:8px">—</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:4px">cWETH</div>
+      <div id="balance-modal-usd" style="font-size:13px;color:var(--text2)"></div>
+    </div>
+    <div style="background:rgba(94,234,212,0.05);border:1px solid rgba(94,234,212,0.15);border-radius:8px;padding:12px;font-size:12px;color:var(--text2);text-align:center;margin-top:8px">
+      🔒 Decrypted privately using FHE — only you can see this
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">VEIL<span>.</span></div>
+  <div class="nav-links">
+    <button class="nav-link active" id="nl-dashboard" onclick="showPage('dashboard')">Dashboard</button>
+    <button class="nav-link" id="nl-deposit" onclick="showPage('deposit')">Deposit</button>
+    <button class="nav-link" id="nl-borrow" onclick="showPage('borrow')">Borrow</button>
+    <button class="nav-link" id="nl-repay" onclick="showPage('repay')">Repay</button>
+    <button class="nav-link" id="nl-markets" onclick="showPage('markets')">Markets</button>
+  </div>
+  <div class="nav-right">
+    <div class="nav-price-pill" id="nav-pill">
+      <span>ETH</span>
+      <span class="price" id="nav-eth-price">$—</span>
+      <span class="divider"></span>
+      <span class="bal" id="nav-balance">— ETH</span>
+    </div>
+    <button class="btn-connect" id="nav-connect-btn" onclick="connectWallet()">Connect Wallet</button>
+    <div class="address-chip" id="address-chip" onclick="openModal('account-modal')">0x0000...0000</div>
+    <div class="hamburger" id="hamburger" onclick="toggleMobileNav()">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</nav>
+
+<!-- MOBILE NAV -->
+<div class="mobile-nav" id="mobile-nav">
+  <button class="mobile-nav-link" id="mobile-connect-btn" onclick="connectWallet();toggleMobileNav()" style="color:var(--accent);font-weight:700">Connect Wallet</button>
+  <div style="height:1px;background:var(--border);margin:4px 0"></div>
+  <button class="mobile-nav-link" onclick="showPage('dashboard');toggleMobileNav()">Dashboard</button>
+  <button class="mobile-nav-link" onclick="showPage('deposit');toggleMobileNav()">Deposit</button>
+  <button class="mobile-nav-link" onclick="showPage('borrow');toggleMobileNav()">Borrow</button>
+  <button class="mobile-nav-link" onclick="showPage('repay');toggleMobileNav()">Repay</button>
+  <button class="mobile-nav-link" onclick="showPage('markets');toggleMobileNav()">Markets</button>
+  <div style="height:1px;background:var(--border);margin:4px 0"></div>
+  <button class="mobile-nav-link" onclick="handleFaucet();toggleMobileNav()" style="color:var(--accent)">Get 0.5 cWETH (Faucet)</button>
+  <button class="mobile-nav-link" onclick="addCwethToWallet();toggleMobileNav()" style="color:var(--text3)">+ Add cWETH to Wallet</button>
+  <button class="mobile-nav-link" id="mobile-account-btn" onclick="openModal('account-modal');toggleMobileNav()" style="display:none;color:var(--text2)">Account / Disconnect</button>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- CONNECT PAGE -->
+  <div id="page-connect" class="app-page active">
+    <div class="landing">
+      <div class="landing-glow"></div>
+      <div class="landing-badge">Confidential Lending on Sepolia</div>
+      <h1>Lend Privately.<br><span class="accent">Borrow Invisibly.</span></h1>
+      <p>VEIL encrypts your position with FHE. Liquidation bots see only ciphertext — they can never calculate when to liquidate you.</p>
+      <div class="landing-btns">
+        <button class="btn-primary" onclick="connectWallet()">Connect Wallet</button>
+        <a href="compare.html" class="btn-outline" target="_blank">See the Proof ↗</a>
+      </div>
+      <div class="landing-stats">
+        <div>
+          <div class="landing-stat-value" style="color:var(--accent)" id="ls-pool">— ETH</div>
+          <div class="landing-stat-label">Pool Liquidity</div>
+        </div>
+        <div>
+          <div class="landing-stat-value" id="ls-positions">—</div>
+          <div class="landing-stat-label">Open Positions</div>
+        </div>
+        <div>
+          <div class="landing-stat-value" style="color:var(--accent2)" id="ls-price">$—</div>
+          <div class="landing-stat-label">ETH Price</div>
+        </div>
+        <div>
+          <div class="landing-stat-value" style="color:var(--purple)">FHE</div>
+          <div class="landing-stat-label">Encrypted</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD PAGE -->
+  <div id="page-dashboard" class="app-page">
+    <div class="page-header">
+      <div class="page-title">Dashboard</div>
+      <div class="page-sub">Your encrypted position overview</div>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric">
+        <div class="metric-label">Collateral</div>
+        <div class="metric-value" id="dash-collateral" style="color:var(--green)">—</div>
+        <div class="metric-sub" id="dash-collateral-usd"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Debt</div>
+        <div class="metric-value" id="dash-debt" style="color:var(--red)">—</div>
+        <div class="metric-sub" id="dash-debt-usd"></div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Max Borrow</div>
+        <div class="metric-value" id="dash-max-borrow" style="color:var(--accent)">—</div>
+        <div class="metric-sub">66% of collateral</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Liq. Price</div>
+        <div class="metric-value" id="dash-liq-price" style="color:var(--red)">—</div>
+        <div class="metric-sub">ETH at liquidation</div>
+      </div>
+    </div>
+
+    <div class="split-grid">
+      <div>
+        <div id="dash-no-pos" class="card">
+          <div class="card-body" style="text-align:center;padding:32px">
+            <div style="font-size:32px;margin-bottom:12px">🔒</div>
+            <div style="font-size:15px;font-weight:600;margin-bottom:8px">No Open Position</div>
+            <div style="font-size:13px;color:var(--text2);margin-bottom:20px">Deposit cWETH to open a confidential lending position.</div>
+            <button class="btn btn-yellow" onclick="showPage('deposit')">Deposit Collateral</button>
+          </div>
+        </div>
+
+        <div id="dash-has-pos" class="card" style="display:none">
+          <div class="card-header">
+            <div class="card-title">Position Details</div>
+            <span class="badge badge-green">Active</span>
+          </div>
+          <div class="card-body">
+            <div class="pos-item">
+              <div><div class="pos-item-label">Collateral</div></div>
+              <div>
+                <div class="pos-item-value" id="pos-collateral">—</div>
+                <div class="pos-item-sub" id="pos-collateral-usd"></div>
+              </div>
+            </div>
+            <div class="pos-item">
+              <div><div class="pos-item-label">Debt</div></div>
+              <div>
+                <div class="pos-item-value" id="pos-debt">—</div>
+                <div class="pos-item-sub" id="pos-debt-usd"></div>
+              </div>
+            </div>
+            <div class="pos-item">
+              <div><div class="pos-item-label">Health Factor</div></div>
+              <div>
+                <div class="pos-item-value" style="color:var(--accent2)">Private</div>
+                <div class="pos-item-sub">Encrypted onchain</div>
+              </div>
+            </div>
+            <div class="pos-item">
+              <div><div class="pos-item-label">Opened</div></div>
+              <div><div class="pos-item-value" id="pos-opened" style="font-size:12px;color:var(--text2)">—</div></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-yellow" onclick="showPage('deposit')">Add Collateral</button>
+              <button class="btn btn-red" onclick="handleClosePosition()">Close Position</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Transactions</div>
+            <span class="badge badge-yellow" id="tx-count">0</span>
+          </div>
+          <div class="card-body">
+            <div class="tx-feed" id="tx-feed">
+              <div style="text-align:center;color:var(--text3);font-size:13px;padding:16px">No transactions yet</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+          <div class="sdk-status" id="sdk-status">
+            <div class="sdk-dot loading"></div>
+            <span id="sdk-status-text">Initializing SDK...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPOSIT PAGE -->
+  <div id="page-deposit" class="app-page">
+    <div class="page-header">
+      <div class="page-title">Deposit</div>
+      <div class="page-sub">Lock Confidential WETH (cWETH) as encrypted collateral</div>
+    </div>
+    <div class="split-grid">
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Open Position</div>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-info">Your deposit is encrypted with FHE before hitting the blockchain. The amount is never visible in plaintext.</div>
+            <div class="form-group">
+              <label class="form-label">Amount to Deposit <span class="form-hint">Max: 10 cWETH</span></label>
+              <div class="input-wrap">
+                <input type="number" id="deposit-amount-input" class="input" placeholder="0.00" min="0" step="0.01">
+                <div class="input-suffix">cWETH</div>
+              </div>
+            </div>
+            <button class="btn btn-yellow" onclick="handleDeposit()">Deposit Collateral</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Wallet Balance</div>
+          </div>
+          <div class="card-body">
+            <div style="text-align:center;padding:20px 0">
+              <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Available</div>
+              <div style="font-size:28px;font-weight:700;color:var(--accent);margin-bottom:4px">—</div>
+              <div style="font-size:13px;color:var(--text2)">cWETH</div>
+            </div>
+            <button id="show-balance-btn" class="btn btn-ghost" onclick="loadCwethBalance()" style="font-size:12px">View Balance 🔓</button>
+            <button class="btn btn-yellow" onclick="handleFaucet()" style="font-size:12px;margin-top:8px">Get 0.5 cWETH (Faucet)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BORROW PAGE -->
+  <div id="page-borrow" class="app-page">
+    <div class="page-header">
+      <div class="page-title">Borrow</div>
+      <div class="page-sub">Borrow stablecoins against encrypted collateral</div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Borrow Amount</div>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-info">Borrow up to 66% of your collateral value</div>
+        <div class="form-group">
+          <label class="form-label">Amount to Borrow</label>
+          <div class="input-wrap">
+            <input type="number" id="borrow-amount-input" class="input" placeholder="0.00" min="0" step="0.01">
+            <div class="input-suffix">USDC</div>
+          </div>
+        </div>
+        <div style="margin-bottom:16px;padding:12px;background:var(--bg);border-radius:8px;font-size:12px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="color:var(--text2)">Max Borrow</span>
+            <span style="font-weight:600">— USDC</span>
+          </div>
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:var(--text2)">Interest Rate</span>
+            <span style="font-weight:600;color:var(--accent)">8.5% APY</span>
+          </div>
+        </div>
+        <button class="btn btn-green" onclick="handleBorrow()">Borrow</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- REPAY PAGE -->
+  <div id="page-repay" class="app-page">
+    <div class="page-header">
+      <div class="page-title">Repay</div>
+      <div class="page-sub">Repay your outstanding debt</div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Repay Debt</div>
+      </div>
+      <div class="card-body">
+        <div style="margin-bottom:16px;padding:12px;background:var(--surface2);border-radius:8px;font-size:12px">
+          <div style="display:flex;justify-content:space-between">
+            <span style="color:var(--text2)">Outstanding Debt</span>
+            <span style="font-weight:600;color:var(--red)">— USDC</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount to Repay</label>
+          <div class="input-wrap">
+            <input type="number" id="repay-amount-input" class="input" placeholder="0.00" min="0" step="0.01">
+            <div class="input-suffix">USDC</div>
+          </div>
+        </div>
+        <button class="btn btn-yellow" onclick="handleRepay()">Repay Debt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MARKETS PAGE -->
+  <div id="page-markets" class="app-page">
+    <div class="page-header">
+      <div class="page-title">Markets</div>
+      <div class="page-sub">Protocol statistics and market data</div>
+    </div>
+    <div class="split-grid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">cWETH Market</div>
+          <span class="badge badge-green">Active</span>
+        </div>
+        <div class="card-body">
+          <div style="margin-bottom:12px">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Total Collateral</div>
+            <div style="font-size:22px;font-weight:700;color:var(--accent)">— ETH</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Collateral Factor</div>
+            <div style="font-size:18px;font-weight:600">75%</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">USDC Market</div>
+          <span class="badge badge-green">Active</span>
+        </div>
+        <div class="card-body">
+          <div style="margin-bottom:12px">
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Total Borrowed</div>
+            <div style="font-size:22px;font-weight:700;color:var(--red)">— USDC</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Borrow APY</div>
+            <div style="font-size:18px;font-weight:600;color:var(--accent)">8.5%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- SCRIPTS -->
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// VEIL Finance — JavaScript Application
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── STATE ───
+let currentUser = null;
+let provider = null;
+let signer = null;
+let txHistory = [];
+
+const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 in hex
+const SEPOLIA_RPC = 'https://sepolia.drpc.org';
+
+// ─── WALLET CONNECTION ───
+
+// Use window.ethereum directly — works with MetaMask, OKX, Coinbase, and any injected wallet
+function getWalletProvider() {
+  return window.ethereum || null
+}
+
+async function connectWallet() {
+  if (!window.ethereum) {
+    showToast('No wallet detected. Install MetaMask or another injected wallet.', 'error');
+    return;
+  }
+
+  try {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    currentUser = accounts[0];
+
+    provider = new ethers.BrowserProvider(window.ethereum);
+    signer = await provider.getSigner();
+    window.signer = signer;
+    window.provider = provider;
+    window._state = { signer, provider, currentUser };
+
+    console.log('[CONNECT] signer set:', !!signer, '| window.signer set:', !!window.signer, '| address:', currentUser)
+
+    await checkNetwork();
+    updateUI();
+    showPage('dashboard');
+    showToast('Wallet connected!', 'success');
+  } catch (error) {
+    console.error('[CONNECT] error:', error);
+    showToast('Failed to connect wallet', 'error');
+  }
+}
+
+async function disconnectWallet() {
+  currentUser = null;
+  provider = null;
+  signer = null;
+  window.signer = null;
+  window.provider = null;
+  window._state = { signer: null, provider: null, currentUser: null };
+  updateUI();
+  showPage('connect');
+  closeModal('account-modal');
+  showToast('Wallet disconnected', 'success');
+}
+
+async function checkNetwork() {
+  const wp = getWalletProvider()
+  if (!wp) return;
+
+  const chainId = await wp.request({ method: 'eth_chainId' });
+  const wrongNetwork = document.getElementById('wrong-network');
+
+  if (chainId !== SEPOLIA_CHAIN_ID) {
+    wrongNetwork.style.display = 'flex';
+  } else {
+    wrongNetwork.style.display = 'none';
+  }
+}
+
+async function switchToSepolia() {
+  const wp = getWalletProvider()
+  if (!wp) return;
+
+  try {
+    await wp.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: SEPOLIA_CHAIN_ID }],
+    });
+    checkNetwork();
+  } catch (error) {
+    if (error.code === 4902) {
+      try {
+        await wp.request({
+          method: 'wallet_addEthereumChain',
+          params: [
+            {
+              chainId: SEPOLIA_CHAIN_ID,
+              chainName: 'Sepolia Testnet',
+              nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+              rpcUrls: [SEPOLIA_RPC],
+              blockExplorerUrls: ['https://sepolia.etherscan.io'],
+            },
+          ],
+        });
+      } catch (addError) {
+        showToast('Failed to add Sepolia network', 'error');
+      }
+    }
+  }
+}
+
+// ─── PAGE NAVIGATION ───
+function showPage(pageName) {
+  const pages = document.querySelectorAll('.app-page');
+  pages.forEach(page => page.classList.remove('active'));
+
+  const selectedPage = document.getElementById(`page-${pageName}`);
+  if (selectedPage) {
+    selectedPage.classList.add('active');
+  }
+
+  const navLinks = document.querySelectorAll('.nav-link');
+  navLinks.forEach(link => link.classList.remove('active'));
+
+  const activeLink = document.getElementById(`nl-${pageName}`);
+  if (activeLink) {
+    activeLink.classList.add('active');
+  }
+
+  closeMobileNav();
+}
+
+// ─── MODAL MANAGEMENT ───
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) { console.error('[MODAL] not found:', modalId); return; }
+  modal.removeAttribute('style');
+  modal.style.cssText = [
+    'display:flex!important',
+    'position:fixed!important',
+    'top:0!important',
+    'left:0!important',
+    'right:0!important',
+    'bottom:0!important',
+    'width:100%!important',
+    'height:100%!important',
+    'z-index:9999999!important',
+    'align-items:center!important',
+    'justify-content:center!important',
+    'background:rgba(5,5,6,0.92)!important',
+    'padding:24px!important',
+    'overflow-y:auto!important',
+    'visibility:visible!important',
+    'opacity:1!important',
+    'pointer-events:auto!important',
+  ].join(';');
+  modal.classList.add('open');
+  console.log('[MODAL] opened:', modalId, '| display now:', getComputedStyle(modal).display);
+}
+
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (!modal) return;
+  modal.classList.remove('open');
+  modal.removeAttribute('style');
+  modal.style.setProperty('display', 'none', 'important');
+}
+
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay')) {
+    closeModal(e.target.id);
+  }
+});
+
+// ─── MOBILE NAVIGATION ───
+function toggleMobileNav() {
+  const mobileNav = document.getElementById('mobile-nav');
+  mobileNav.classList.toggle('open');
+}
+
+function closeMobileNav() {
+  const mobileNav = document.getElementById('mobile-nav');
+  mobileNav.classList.remove('open');
+}
+
+// ─── ACCOUNT ACTIONS ───
+function copyAddress() {
+  if (!currentUser) return;
+  navigator.clipboard.writeText(currentUser);
+  showToast('Address copied to clipboard! 📋', 'success');
+}
+
+// ─── FAUCET & WALLET ACTIONS ───
+async function handleFaucet() {
+  if (!signer) {
+    showToast('Connect wallet first', 'error')
+    return
+  }
+  showToast('Requesting cWETH from faucet...', 'info')
+  try {
+    const userAddress = await signer.getAddress()
+    const res = await fetch(`${BACKEND_URL}/faucet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userAddress }),
+    })
+    const body = await res.json()
+    if (!res.ok || !body.success) throw new Error(body.error || res.status)
+    showToast(`Faucet sent! Tx: ${body.txHash?.slice(0, 12)}...`, 'success')
+  } catch (err) {
+    console.error('[FAUCET] error:', err)
+    showToast(`Faucet failed: ${err.message}`, 'error')
+  }
+}
+
+async function addCwethToWallet() {
+  const wp = getWalletProvider()
+  if (!wp) return;
+
+  try {
+    await wp.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: CWETH_ADDRESS,
+          symbol: 'cWETH',
+          decimals: 18,
+        },
+      },
+    });
+    showToast('cWETH added to wallet! 🎉', 'success');
+  } catch (error) {
+    showToast('Failed to add token', 'error');
+  }
+}
+
+// ─── POSITION MANAGEMENT ───
+
+const CONTRACT_ADDRESS = '0x1689b2e699bD28Dc21A8442Ec8e3D39F5d52dDCB'
+const CONTRACT_ABI = [
+  'function openPosition(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
+  'function addCollateral(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
+  'function borrow(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
+  'function repay(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
+  'function hasPosition(address user) external view returns (bool)',
+  'function closePosition() external',
+  'function getCollateral(address user) external view returns (uint256)',
+  'function getDebt(address user) external view returns (uint256)',
+]
+const BACKEND_URL = 'https://veil-backend-2gki.onrender.com'
+
+const CWETH_ADDRESS = '0x46208622DA27d91db4f0393733C8BA082ed83158'
+const CWETH_ABI = [
+  'function confidentialBalanceOf(address user) external view returns (bytes32)',
+]
+
+const KNOWN_ERRORS = {
+  '0x5ff91cdc': 'FHEVM: encrypted input proof rejected — handle or proof invalid for this contract',
+  '0x09bde339': 'InvalidProof()',
+  '0xaac34bd8': 'NotAllowedToHandleCiphertext()',
+  '0x3d693ada': 'NotAllowed()',
+  '0x9fd8296a': 'ACLNotAllowed()',
+  '0xfb8f41b2': 'ERC20InsufficientAllowance',
+  '0xe450d38c': 'ERC20InsufficientBalance',
+}
+
+function decodeRevertError(err) {
+  const data = err?.data || err?.error?.data || err?.info?.error?.data || ''
+  if (!data) return err.message || 'Transaction reverted'
+  const sel = typeof data === 'string' ? data.slice(0, 10).toLowerCase() : ''
+  if (KNOWN_ERRORS[sel]) return `Revert: ${KNOWN_ERRORS[sel]}`
+  return `Revert ${sel}: ${data.slice(0, 80)}`
+}
+
+function advanceFheStep(stepNum) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById(`fhe-step-${i}`)
+    el.classList.remove('active', 'done', 'error')
+    if (i < stepNum) el.classList.add('done')
+    else if (i === stepNum) el.classList.add('active')
+  }
+}
+
+async function handleDeposit() {
+  if (!signer || !currentUser) {
+    showToast('Connect wallet first', 'error')
+    return
+  }
+
+  const input = document.getElementById('deposit-amount-input')
+  const rawAmount = parseFloat(input?.value)
+  if (!rawAmount || rawAmount <= 0) {
+    showToast('Enter a valid amount', 'error')
+    return
+  }
+
+  const amountInt = Math.round(rawAmount)
+  if (amountInt <= 0) {
+    showToast('Amount must be at least 1 cWETH', 'error')
+    return
+  }
+
+  showFheModal('Depositing Collateral', 'Encrypting amount with FHE...')
+
+  try {
+    console.log('[DEPOSIT] amount raw:', rawAmount, '→ integer:', amountInt)
+    advanceFheStep(2)
+
+    const userAddress = await signer.getAddress()
+    const wp = getWalletProvider()
+    console.log('[DEPOSIT] signer.getAddress()      :', userAddress)
+    console.log('[DEPOSIT] provider.selectedAddress :', wp?.selectedAddress || 'n/a')
+    console.log('[DEPOSIT] cached currentUser       :', currentUser)
+
+    const encryptRes = await fetch(`${BACKEND_URL}/encrypt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: amountInt, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    })
+    const encryptBody = await encryptRes.json()
+    if (!encryptRes.ok || !encryptBody.success) {
+      throw new Error(`Encrypt failed: ${encryptBody.error || encryptRes.status}`)
+    }
+
+    const { handle, inputProof } = encryptBody
+    const handleClean = handle?.startsWith('0x') ? handle : `0x${handle}`
+    const handleHex = handleClean.replace(/^0x/, '')
+    if (handleHex.length !== 64) {
+      throw new Error(`Bad handle length: got ${handleHex.length} hex chars, expected 64`)
+    }
+    const handleBytes32 = `0x${handleHex}`
+
+    console.log('[DEPOSIT] handle:', handleBytes32, '| inputProof:', inputProof?.slice(0, 20), '...')
+    console.log('[DEPOSIT] plainAmount:', amountInt)
+
+    advanceFheStep(3)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
+
+    let hasPos = false
+    try { hasPos = await contract.hasPosition(userAddress) } catch {}
+    console.log('[DEPOSIT] hasPosition:', hasPos, '| calling:', hasPos ? 'addCollateral' : 'openPosition')
+
+    const tx = hasPos
+      ? await contract.addCollateral(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 1_000_000n })
+      : await contract.openPosition(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 1_000_000n })
+    console.log('[DEPOSIT] tx sent:', tx.hash)
+
+    advanceFheStep(4)
+    const receipt = await tx.wait()
+    console.log('[DEPOSIT] confirmed block:', receipt.blockNumber)
+
+    closeFheModal()
+    showToast(`Deposited ${amountInt} cWETH! 🔒`, 'success')
+    input.value = ''
+    showPage('dashboard')
+
+  } catch (err) {
+    const msg = decodeRevertError(err)
+    console.error('[DEPOSIT] error:', err)
+    console.error('[DEPOSIT] decoded:', msg)
+    console.error('[DEPOSIT] raw data:', err?.data || err?.error?.data || 'none')
+    const activeStep = document.querySelector('.fhe-step.active')
+    if (activeStep) { activeStep.classList.remove('active'); activeStep.classList.add('error') }
+    setTimeout(closeFheModal, 2500)
+    showToast(msg, 'error')
+  }
+}
+
+async function handleBorrow() {
+  if (!signer) { showToast('Connect wallet first', 'error'); return }
+  const input = document.getElementById('borrow-amount-input')
+  const rawAmount = parseFloat(input?.value)
+  if (!rawAmount || rawAmount <= 0) { showToast('Enter a valid amount', 'error'); return }
+  const amountInt = Math.round(rawAmount)
+  if (amountInt <= 0) { showToast('Amount must be at least 1', 'error'); return }
+
+  showFheModal('Borrowing USDC', 'Encrypting borrow amount with FHE...')
+  try {
+    advanceFheStep(2)
+    const userAddress = await signer.getAddress()
+    console.log('[BORROW] userAddress:', userAddress, '| amount:', amountInt)
+
+    const encryptRes = await fetch(`${BACKEND_URL}/encrypt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: amountInt, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    })
+    const encryptBody = await encryptRes.json()
+    if (!encryptRes.ok || !encryptBody.success) throw new Error(`Encrypt failed: ${encryptBody.error || encryptRes.status}`)
+
+    const { handle, inputProof } = encryptBody
+    const handleBytes32 = handle.startsWith('0x') ? handle : `0x${handle}`
+    console.log('[BORROW] handle:', handleBytes32, '| inputProof:', inputProof?.slice(0, 20), '...')
+
+    advanceFheStep(3)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
+    const tx = await contract.borrow(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 2_000_000n })
+    console.log('[BORROW] tx sent:', tx.hash)
+
+    advanceFheStep(4)
+    const receipt = await tx.wait()
+    console.log('[BORROW] confirmed block:', receipt.blockNumber)
+
+    closeFheModal()
+    showToast(`Borrowed ${amountInt} USDC!`, 'success')
+    input.value = ''
+    showPage('dashboard')
+  } catch (err) {
+    const msg = decodeRevertError(err)
+    console.error('[BORROW] error:', err)
+    const activeStep = document.querySelector('.fhe-step.active')
+    if (activeStep) { activeStep.classList.remove('active'); activeStep.classList.add('error') }
+    setTimeout(closeFheModal, 2500)
+    showToast(msg, 'error')
+  }
+}
+
+async function handleRepay() {
+  if (!signer) { showToast('Connect wallet first', 'error'); return }
+  const input = document.getElementById('repay-amount-input')
+  const rawAmount = parseFloat(input?.value)
+  if (!rawAmount || rawAmount <= 0) { showToast('Enter a valid amount', 'error'); return }
+  const amountInt = Math.round(rawAmount)
+  if (amountInt <= 0) { showToast('Amount must be at least 1', 'error'); return }
+
+  showFheModal('Repaying Debt', 'Encrypting repay amount with FHE...')
+  try {
+    advanceFheStep(2)
+    const userAddress = await signer.getAddress()
+    console.log('[REPAY] userAddress:', userAddress, '| amount:', amountInt)
+
+    const encryptRes = await fetch(`${BACKEND_URL}/encrypt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: amountInt, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    })
+    const encryptBody = await encryptRes.json()
+    if (!encryptRes.ok || !encryptBody.success) throw new Error(`Encrypt failed: ${encryptBody.error || encryptRes.status}`)
+
+    const { handle, inputProof } = encryptBody
+    const handleBytes32 = handle.startsWith('0x') ? handle : `0x${handle}`
+    console.log('[REPAY] handle:', handleBytes32, '| inputProof:', inputProof?.slice(0, 20), '...')
+
+    advanceFheStep(3)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
+    const tx = await contract.repay(handleBytes32, inputProof, BigInt(amountInt), { gasLimit: 2_000_000n })
+    console.log('[REPAY] tx sent:', tx.hash)
+
+    advanceFheStep(4)
+    const receipt = await tx.wait()
+    console.log('[REPAY] confirmed block:', receipt.blockNumber)
+
+    closeFheModal()
+    showToast(`Repaid ${amountInt} USDC!`, 'success')
+    input.value = ''
+    showPage('dashboard')
+  } catch (err) {
+    const msg = decodeRevertError(err)
+    console.error('[REPAY] error:', err)
+    const activeStep = document.querySelector('.fhe-step.active')
+    if (activeStep) { activeStep.classList.remove('active'); activeStep.classList.add('error') }
+    setTimeout(closeFheModal, 2500)
+    showToast(msg, 'error')
+  }
+}
+
+async function handleClosePosition() {
+  if (!signer) { showToast('Connect wallet first', 'error'); return }
+  showFheModal('Closing Position', 'Sending close transaction...')
+  try {
+    advanceFheStep(3)
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer)
+    const tx = await contract.closePosition({ gasLimit: 1_000_000n })
+    console.log('[CLOSE] tx sent:', tx.hash)
+    advanceFheStep(4)
+    await tx.wait()
+    closeFheModal()
+    showToast('Position closed!', 'success')
+    showPage('dashboard')
+  } catch (err) {
+    const msg = decodeRevertError(err)
+    console.error('[CLOSE] error:', err)
+    const activeStep = document.querySelector('.fhe-step.active')
+    if (activeStep) { activeStep.classList.remove('active'); activeStep.classList.add('error') }
+    setTimeout(closeFheModal, 2500)
+    showToast(msg, 'error')
+  }
+}
+
+async function loadCwethBalance() {
+  // Resolve signer — fall back to window.signer if module-level variable is null
+  const _signer = signer || window.signer
+  const _provider = provider || window.provider
+  console.log('[BALANCE] loadCwethBalance called | signer:', !!_signer, '| provider:', !!_provider)
+  openModal('balance-modal')
+
+  const el = document.getElementById('balance-modal-value')
+  const usdEl = document.getElementById('balance-modal-usd')
+
+  if (!_signer) {
+    console.warn('[BALANCE] signer is null — wallet not connected')
+    el.textContent = '—'
+    if (usdEl) usdEl.textContent = 'Connect wallet first'
+    return
+  }
+
+  el.textContent = '...'
+  if (usdEl) usdEl.textContent = ''
+
+  try {
+    const userAddress = await _signer.getAddress()
+    console.log('[BALANCE] signer type:', typeof _signer, '| userAddress:', userAddress)
+
+    const cweth = new ethers.Contract(CWETH_ADDRESS, CWETH_ABI, _provider)
+    const handle = await cweth.confidentialBalanceOf(userAddress)
+    console.log('[BALANCE] encrypted handle:', handle)
+
+    const prepareRes = await fetch(`${BACKEND_URL}/decrypt-prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle, contractAddress: CWETH_ADDRESS, userAddress }),
+    })
+    const prepareBody = await prepareRes.json()
+    if (!prepareRes.ok || !prepareBody.success) {
+      throw new Error(`decrypt-prepare failed: ${prepareBody.error || prepareRes.status}`)
+    }
+    const { keypair, eip712, startTimestamp, durationDays } = prepareBody
+    console.log('[BALANCE] eip712 domain:', eip712.domain)
+    console.log('[BALANCE] keypair.publicKey  type:', typeof keypair.publicKey,  '| first 20:', keypair.publicKey?.slice(0, 20))
+    console.log('[BALANCE] keypair.privateKey type:', typeof keypair.privateKey, '| first 20:', keypair.privateKey?.slice(0, 20))
+
+    const { domain, types: allTypes, message } = eip712
+    const { EIP712Domain: _, ...signTypes } = allTypes
+    const signDomain = { ...domain, chainId: Number(domain.chainId) }
+    console.log('[BALANCE] signing typed data, primaryType: UserDecryptRequestVerification')
+    const signature = await _signer.signTypedData(signDomain, signTypes, message)
+    console.log('[BALANCE] signature:', signature.slice(0, 20), '...')
+
+    console.log('[BALANCE] → decrypt-balance payload:')
+    console.log('  userAddress     :', userAddress)
+    console.log('  handle          :', handle)
+    console.log('  startTimestamp  :', startTimestamp, typeof startTimestamp)
+    console.log('  durationDays    :', durationDays,   typeof durationDays)
+    console.log('  keypair.publicKey  type:', typeof keypair.publicKey,  'len:', keypair.publicKey?.length)
+    console.log('  keypair.privateKey type:', typeof keypair.privateKey, 'len:', keypair.privateKey?.length)
+
+    const decryptRes = await fetch(`${BACKEND_URL}/decrypt-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle, contractAddress: CWETH_ADDRESS, userAddress, signature, keypair, startTimestamp, durationDays }),
+    })
+    const decryptBody = await decryptRes.json()
+    if (!decryptRes.ok || !decryptBody.success) {
+      throw new Error(`decrypt-balance failed: ${decryptBody.error || decryptRes.status}`)
+    }
+    console.log('[BALANCE] decrypted response:', decryptBody)
+
+    const balance = decryptBody.balance ?? decryptBody.value ?? decryptBody.result ?? '—'
+    el.textContent = balance.toString()
+    if (usdEl) usdEl.textContent = 'cWETH (decrypted via FHE)'
+
+  } catch (err) {
+    console.error('[BALANCE] error:', err)
+    el.textContent = '—'
+    if (usdEl) usdEl.textContent = err.message
+  }
+}
+
+// ─── FHE PROGRESS MODAL ───
+function showFheModal(title, subtitle) {
+  const modal = document.getElementById('fhe-modal');
+  const titleEl = document.getElementById('fhe-modal-title');
+  const subEl = document.getElementById('fhe-modal-sub');
+
+  titleEl.textContent = title;
+  subEl.textContent = subtitle;
+
+  for (let i = 1; i <= 4; i++) {
+    const step = document.getElementById(`fhe-step-${i}`);
+    step.classList.remove('active', 'done', 'error');
+    if (i === 1) step.classList.add('active');
+  }
+
+  openModal('fhe-modal');
+  startFheTimer();
+}
+
+function closeFheModal() {
+  closeModal('fhe-modal');
+  stopFheTimer();
+}
+
+let fheTimerInterval = null;
+let fheStartTime = Date.now();
+
+function startFheTimer() {
+  fheStartTime = Date.now();
+  fheTimerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - fheStartTime) / 1000);
+    document.getElementById('fhe-timer').textContent = `${elapsed}s elapsed`;
+  }, 100);
+}
+
+function stopFheTimer() {
+  if (fheTimerInterval) clearInterval(fheTimerInterval);
+}
+
+// ─── TOAST NOTIFICATIONS ───
+function showToast(message, type = 'info') {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type === 'error' ? 'toast-error' : ''}`;
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('out');
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// ─── UI UPDATES ───
+function updateUI() {
+  const connectBtn = document.getElementById('nav-connect-btn');
+  const addressChip = document.getElementById('address-chip');
+  const mobileAccountBtn = document.getElementById('mobile-account-btn');
+  const mobileConnectBtn = document.getElementById('mobile-connect-btn');
+
+  if (currentUser) {
+    connectBtn.style.display = 'none';
+    addressChip.style.display = 'block';
+    addressChip.textContent = `${currentUser.slice(0, 6)}...${currentUser.slice(-4)}`;
+
+    if (mobileConnectBtn) mobileConnectBtn.style.display = 'none';
+    mobileAccountBtn.style.display = 'block';
+
+    document.getElementById('account-full-addr').textContent = currentUser;
+    document.getElementById('account-etherscan').href = `https://sepolia.etherscan.io/address/${currentUser}`;
+
+    document.getElementById('nav-pill').style.display = 'flex';
+  } else {
+    connectBtn.style.display = 'block';
+    addressChip.style.display = 'none';
+    if (mobileConnectBtn) mobileConnectBtn.style.display = 'block';
+    mobileAccountBtn.style.display = 'none';
+    document.getElementById('nav-pill').style.display = 'none';
+    showPage('connect');
+  }
+}
+
+// ─── INITIALIZATION ───
+window.addEventListener('load', async () => {
+  if (window.ethereum) {
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length > 0) {
+        currentUser = accounts[0];
+        provider = new ethers.BrowserProvider(window.ethereum);
+        signer = await provider.getSigner();
+        window.signer = signer;
+        window.provider = provider;
+        window._state = { signer, provider, currentUser };
+        console.log('[LOAD] auto-reconnected | signer:', !!signer, '| address:', currentUser)
+        await checkNetwork();
+        updateUI();
+      }
+    } catch (e) {
+      console.warn('[LOAD] auto-reconnect failed:', e.message)
+    }
+
+    window.ethereum.on?.('accountsChanged', (accounts) => {
+      if (accounts.length === 0) {
+        disconnectWallet();
+      } else if (accounts[0] !== currentUser) {
+        currentUser = accounts[0];
+        updateUI();
+      }
+    });
+
+    window.ethereum.on?.('chainChanged', () => {
+      checkNetwork();
+      window.location.reload();
+    });
+  }
+});
+</script>
+</body>
+  </html>
