@@ -578,6 +578,7 @@ let provider = null;
 let signer = null;
 let txHistory = [];
 let liveEthPrice = 3000;
+let cachedCwethBalance = null;
 
 // ── HELPERS ──
 function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
@@ -741,7 +742,7 @@ async function fetchStats() {
  try {
  const rpcProvider = provider || new ethers.JsonRpcProvider('https://rpc.sepolia.org');
  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, rpcProvider);
- const [pool, positions] = await contract.getStats();
+ const [positions, pool] = await contract.getStats();
  const poolFmt = fmt(pool);
  setText('ls-pool', poolFmt + ' cWETH');
  setText('mkt-pool', poolFmt + ' cWETH');
@@ -838,6 +839,8 @@ async function handleDeposit() {
  const raw = parseFloat(document.getElementById('deposit-amount-input').value);
  if (!raw || raw <= 0) { showToast('Enter a valid amount', true); return; }
  const amountWei = ethers.parseUnits(raw.toString(), CWETH_DECIMALS);
+
+  if (cachedCwethBalance !== null && raw > cachedCwethBalance) { showToast('Amount exceeds your cWETH balance of ' + cachedCwethBalance.toFixed(4) + ' cWETH', true); return; }
 
  const depBtn = document.getElementById('deposit-btn');
  if (depBtn) depBtn.disabled = true;
@@ -1064,8 +1067,13 @@ async function loadCwethBalance() {
  const rawBalance = decData.balance ?? decData.value;
  if (rawBalance !== undefined && rawBalance !== null) {
  const formatted = ethers.formatUnits(rawBalance.toString(), CWETH_DECIMALS);
- el.textContent = parseFloat(formatted).toFixed(4);
- // Update deposit page display too
+      const balNum = parseFloat(formatted);
+      el.textContent = balNum.toFixed(4);
+      setText('deposit-balance-display', balNum.toFixed(4));
+      cachedCwethBalance = balNum;
+      const depInput = document.getElementById('deposit-amount-input');
+      if (depInput) { depInput.max = balNum.toString(); depInput.placeholder = 'Max: ' + balNum.toFixed(4) + ' cWETH'; }
+      setText('deposit-balance-hint', 'Balance: ' + balNum.toFixed(4) + ' cWETH');
  setText('deposit-balance-display', parseFloat(formatted).toFixed(4));
  } else {
  el.textContent = '—';
