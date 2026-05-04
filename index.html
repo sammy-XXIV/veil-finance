@@ -840,7 +840,20 @@ async function handleDeposit() {
  if (!raw || raw <= 0) { showToast('Enter a valid amount', true); return; }
  const amountWei = ethers.parseUnits(raw.toString(), CWETH_DECIMALS);
 
-  if (cachedCwethBalance !== null && raw > cachedCwethBalance) { showToast('Amount exceeds your cWETH balance of ' + cachedCwethBalance.toFixed(4) + ' cWETH', true); return; }
+  // Auto-decrypt balance if not cached — triggers wallet sign
+  if (cachedCwethBalance === null) {
+    showToast('Verifying your cWETH balance...');
+    try {
+      await loadCwethBalance();
+      closeModal('balance-modal');
+    } catch(e) {}
+  }
+
+  // Check amount against real balance
+  if (cachedCwethBalance !== null && raw > cachedCwethBalance) {
+    showToast('Amount exceeds your cWETH balance (' + cachedCwethBalance.toFixed(4) + ' cWETH)', true);
+    return;
+  }
 
  const depBtn = document.getElementById('deposit-btn');
  if (depBtn) depBtn.disabled = true;
