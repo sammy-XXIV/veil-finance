@@ -268,6 +268,17 @@ nav {
  </div>
 </div>
 
+<!-- LIQ PRICE MODAL -->
+<div class="modal-overlay" id="liq-modal">
+  <div class="modal-card" style="text-align:center">
+    <button class="modal-close" onclick="closeModal('liq-modal')">×</button>
+    <div style="font-size:12px;font-family:'Geist Mono',monospace;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px">Liquidation Price</div>
+    <div id="liq-modal-value" style="font-family:'Instrument Serif',serif;font-size:42px;color:var(--red);margin-bottom:8px">—</div>
+    <div id="liq-modal-sub" style="font-size:13px;color:var(--text2);margin-bottom:8px"></div>
+    <div style="font-size:11px;color:var(--text3)">Decrypted via FHE · Sign to verify ownership</div>
+  </div>
+</div>
+
 <!-- NAV -->
 <nav>
  <div class="nav-logo">VEIL<span>.</span></div>
@@ -405,6 +416,7 @@ nav {
  <div style="font-size:13px;color:var(--text2)">cWETH</div>
  </div>
  <button id="show-balance-btn" class="btn btn-ghost" onclick="loadCwethBalance()" style="font-size:12px;margin-bottom:8px">View Balance</button>
+    <button id="show-liq-btn" class="btn btn-ghost" onclick="loadLiqPrice()" style="font-size:12px;margin-bottom:8px">Check Liquidation Price</button>
  <button class="btn btn-yellow" id="faucet-btn" onclick="handleFaucet()" style="font-size:12px">Get 0.005 cWETH — Faucet</button>
  </div>
  </div>
@@ -529,7 +541,7 @@ nav {
  <div class="card">
  <div class="card-header"><div class="card-title">Contracts</div></div>
  <div class="card-body">
- <div class="pos-item"><div class="pos-item-label">VeilLending</div><a href="https://sepolia.etherscan.io/address/0x1689b2e699bD28Dc21A8442Ec8e3D39F5d52dDCB" target="_blank" style="color:var(--accent);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x1689...dDCB ↗</a></div>
+ <div class="pos-item"><div class="pos-item-label">VeilLending</div><a href="https://sepolia.etherscan.io/address/0x366b34bdC8ca3477A9884E40F1E385aAe54941F2" target="_blank" style="color:var(--accent);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x2452...33a4 ↗</a></div>
  <div class="pos-item"><div class="pos-item-label">cWETHMock</div><a href="https://sepolia.etherscan.io/address/0x46208622DA27d91db4f0393733C8BA082ed83158" target="_blank" style="color:var(--accent2);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x4620...3158 ↗</a></div>
  </div>
  </div>
@@ -542,22 +554,21 @@ nav {
 // VEIL Finance — Core Application
 // ══════════════════════════════════════════════════════════
 
-const CONTRACT_ADDRESS = '0x1689b2e699bD28Dc21A8442Ec8e3D39F5d52dDCB';
+const CONTRACT_ADDRESS = '0x366b34bdC8ca3477A9884E40F1E385aAe54941F2';
 const CWETH_ADDRESS = '0x46208622DA27d91db4f0393733C8BA082ed83158';
 const CWETH_DECIMALS = 8;
 const BACKEND_URL = 'https://veil-backend-2gki.onrender.com';
 const SEPOLIA_CHAIN_ID = '0xaa36a7';
 
 const CONTRACT_ABI = [
- 'function openPosition(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
- 'function addCollateral(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
- 'function borrow(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
- 'function repay(bytes32 encryptedAmount, bytes inputProof, uint256 plainAmount) external',
+ 'function openPosition(bytes32 encryptedAmount, bytes inputProof) external',
+ 'function addCollateral(bytes32 encryptedAmount, bytes inputProof) external',
+ 'function borrow(bytes32 encryptedAmount, bytes inputProof) external',
+ 'function repay(bytes32 encryptedAmount, bytes inputProof) external',
  'function hasPosition(address user) external view returns (bool)',
  'function closePosition() external',
- 'function getStats() external view returns (uint256 poolBalance, uint256 positionsCount)',
- 'function getPositionMeta(address user) external view returns (bool exists, uint256 openedAt, uint256 collateralPlain, uint256 debtPlain)',
-];
+ 'function getStats() external view returns (uint256 positions)',
+ ];
 
 const CWETH_ABI = [
  'function confidentialBalanceOf(address user) external view returns (bytes32)',
@@ -742,61 +753,49 @@ async function fetchStats() {
  try {
  const rpcProvider = provider || new ethers.JsonRpcProvider('https://rpc.sepolia.org');
  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, rpcProvider);
- const [positions, pool] = await contract.getStats();
- const poolFmt = fmt(pool);
- setText('ls-pool', poolFmt + ' cWETH');
- setText('mkt-pool', poolFmt + ' cWETH');
+ const positions = await contract.getStats();
+    setText('ls-pool', '🔒 Encrypted');
+    setText('mkt-pool', '🔒 Encrypted');
+
  setText('ls-positions', positions.toString());
  setText('mkt-positions', positions.toString());
- setText('borrow-pool-balance', poolFmt + ' cWETH');
+ setText('borrow-pool-balance', '🔒 Encrypted');
  } catch(e) { console.error('fetchStats:', e); }
 }
 
 async function fetchPosition() {
- if (!currentUser || !provider) return;
- try {
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
- const [exists, openedAt, collateralPlain, debtPlain] = await contract.getPositionMeta(currentUser);
+  if (!currentUser || !provider) return;
+  try {
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+    const exists = await contract.hasPosition(currentUser);
 
- document.getElementById('dash-no-pos').style.display = exists ? 'none' : 'block';
- document.getElementById('dash-has-pos').style.display = exists ? 'block' : 'none';
+    document.getElementById('dash-no-pos').style.display = exists ? 'none' : 'block';
+    document.getElementById('dash-has-pos').style.display = exists ? 'block' : 'none';
 
- if (exists) {
- const collFmt = fmt(collateralPlain);
- const debtFmt = fmt(debtPlain);
- const maxBorrowWei = (collateralPlain * 66n) / 100n;
- const maxFmt = fmt(maxBorrowWei);
- const remainBorrow = (maxBorrowWei - debtPlain);
- const remainFmt = fmt(remainBorrow > 0n ? remainBorrow : 0n);
- const liqPrice = debtPlain > 0n && collateralPlain > 0n
- ? ((parseFloat(debtFmt) * 1.5 / parseFloat(collFmt)) * liveEthPrice).toFixed(0)
- : null;
+    if (exists) {
+      setText('dash-collateral', cachedCwethBalance !== null ? cachedCwethBalance.toFixed(4) + ' cWETH' : '🔒 Encrypted');
+      setText('dash-collateral-usd', '—');
+      setText('dash-debt', '🔒 Encrypted');
+      setText('dash-debt-usd', '—');
+      setText('dash-max-borrow', cachedCwethBalance !== null ? (cachedCwethBalance * 0.66).toFixed(4) + ' cWETH' : '🔒 Decrypt to view');
+      setText('dash-liq-price', '🔒 Encrypted');
+      setText('pos-collateral', cachedCwethBalance !== null ? cachedCwethBalance.toFixed(4) + ' cWETH' : '🔒 Encrypted');
+      setText('pos-collateral-usd', '—');
+      setText('pos-debt', '🔒 Encrypted');
+      setText('pos-debt-usd', '—');
+      setText('borrow-available', cachedCwethBalance !== null ? (cachedCwethBalance * 0.66).toFixed(4) + ' cWETH' : '🔒 Decrypt to view');
+      setText('repay-debt-display', '🔒 Encrypted');
+      setText('repay-collateral-display', cachedCwethBalance !== null ? cachedCwethBalance.toFixed(4) + ' cWETH' : '🔒 Encrypted');
 
- setText('dash-collateral', collFmt + ' cWETH');
- setText('dash-collateral-usd', usd(collateralPlain));
- setText('dash-debt', debtFmt + ' cWETH');
- setText('dash-debt-usd', usd(debtPlain));
- setText('dash-max-borrow', maxFmt + ' cWETH');
- setText('dash-liq-price', liqPrice ? '$' + Number(liqPrice).toLocaleString() : 'Borrow first');
- setText('pos-collateral', collFmt + ' cWETH');
- setText('pos-collateral-usd', usd(collateralPlain));
- setText('pos-debt', debtFmt + ' cWETH');
- setText('pos-debt-usd', usd(debtPlain));
- setText('pos-opened', new Date(Number(openedAt) * 1000).toLocaleDateString());
- setText('borrow-available', remainFmt + ' cWETH');
- setText('repay-debt-display', debtFmt + ' cWETH');
- setText('repay-collateral-display', collFmt + ' cWETH');
-
- // Update deposit btn
- const depBtn = document.getElementById('deposit-btn');
- if (depBtn) depBtn.textContent = 'Add Collateral';
- const depTitle = document.getElementById('deposit-card-title');
- if (depTitle) depTitle.textContent = 'Add Collateral';
- } else {
- ['dash-collateral','dash-debt','dash-max-borrow','dash-liq-price'].forEach(id => setText(id, '—'));
- setText('borrow-available', '—');
- }
- } catch(e) { console.error('fetchPosition:', e); }
+      const depBtn = document.getElementById('deposit-btn');
+      if (depBtn) depBtn.textContent = 'Add Collateral';
+      const depTitle = document.getElementById('deposit-card-title');
+      if (depTitle) depTitle.textContent = 'Add Collateral';
+    } else {
+      ['dash-collateral','dash-debt','dash-max-borrow','dash-liq-price'].forEach(id => setText(id, '—'));
+      setText('borrow-available', '—');
+    }
+  } catch(e) { console.error('fetchPosition:', e); }
 }
 
 // ── FHE MODAL ──
@@ -878,8 +877,8 @@ async function handleDeposit() {
  let hasPos = false;
  try { hasPos = await contract.hasPosition(userAddress); } catch {}
  const tx = hasPos
- ? await contract.addCollateral(handle, proof, amountWei, { gasLimit: 1_000_000n })
- : await contract.openPosition(handle, proof, amountWei, { gasLimit: 1_000_000n });
+ ? await contract.addCollateral(handle, proof, { gasLimit: 1_000_000n })
+ : await contract.openPosition(handle, proof, { gasLimit: 1_000_000n });
 
  advanceFheStep(4);
  await tx.wait();
@@ -904,19 +903,25 @@ async function handleBorrow() {
  const raw = parseFloat(document.getElementById('borrow-amount-input').value);
  if (!raw || raw <= 0) { showToast('Enter a valid amount', true); return; }
  const amountWei = ethers.parseUnits(raw.toString(), CWETH_DECIMALS);
+  // LTV check using cached balance
+  if (cachedCwethBalance !== null) {
+    const maxBorrow = cachedCwethBalance * 0.66;
+    if (parseFloat(ethers.formatUnits(amountWei, CWETH_DECIMALS)) > maxBorrow) {
+      showToast('Exceeds 66% LTV. Max: ' + maxBorrow.toFixed(4) + ' cWETH', true);
+      return;
+    }
+  }
 
- // LTV check
- try {
- const userAddress = await signer.getAddress();
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
- const [, , collateralPlain, debtPlain] = await contract.getPositionMeta(userAddress);
- const maxBorrow = (collateralPlain * 66n) / 100n;
- if (debtPlain + amountWei > maxBorrow) {
- const remaining = maxBorrow - debtPlain;
- showToast(`Exceeds 66% LTV. Max: ${fmt(remaining > 0n ? remaining : 0n)} cWETH`, true);
- return;
- }
- } catch(e) { showToast('Could not check LTV limit', true); return; }
+  // Pool balance check
+  try {
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
+    // pool balance is encrypted — token enforces liquidity
+  } catch(e) { console.warn('Pool check failed:', e); }
+
+
+
+
+
 
  showFheModal('Borrowing cWETH', 'Encrypting with FHE...');
  try {
@@ -925,7 +930,7 @@ async function handleBorrow() {
  const { handle, proof } = await encryptAmount(amountWei, userAddress);
  advanceFheStep(3);
  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
- const tx = await contract.borrow(handle, proof, amountWei, { gasLimit: 2_000_000n });
+ const tx = await contract.borrow(handle, proof, { gasLimit: 2_000_000n });
  advanceFheStep(4);
  await tx.wait();
  closeFheModal();
@@ -956,7 +961,7 @@ async function handleRepay() {
  const { handle, proof } = await encryptAmount(amountWei, userAddress);
  advanceFheStep(3);
  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
- const tx = await contract.repay(handle, proof, amountWei, { gasLimit: 2_000_000n });
+ const tx = await contract.repay(handle, proof, { gasLimit: 2_000_000n });
  advanceFheStep(4);
  await tx.wait();
  closeFheModal();
@@ -974,35 +979,25 @@ async function handleRepay() {
 
 // ── CLOSE POSITION ──
 async function handleClosePosition() {
- if (!signer) { showToast('Connect wallet first', true); return; }
- // Check no outstanding debt before closing
- try {
- const userAddress = await signer.getAddress();
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
- const [, , , debtPlain] = await contract.getPositionMeta(userAddress);
- if (debtPlain > 0n) {
- showToast('Repay all debt before closing position', true);
- return;
- }
- } catch(e) {}
- showFheModal('Closing Position', 'Sending transaction...');
- try {
- advanceFheStep(3);
- const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
- const tx = await contract.closePosition({ gasLimit: 1_000_000n });
- advanceFheStep(4);
- await tx.wait();
- closeFheModal();
- addTx('Close', '—', 'success', tx.hash);
- showToast('Position closed');
- await refreshData();
- showPage('dashboard');
- } catch(e) {
- const msg = decodeRevertError(e);
- document.querySelector('.fhe-step.active')?.classList.replace('active','error');
- setTimeout(closeFheModal, 2500);
- showToast(msg, true);
- }
+  if (!signer) { showToast('Connect wallet first', true); return; }
+  showFheModal('Closing Position', 'Sending transaction...');
+  try {
+    advanceFheStep(3);
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+    const tx = await contract.closePosition({ gasLimit: 1_000_000n });
+    advanceFheStep(4);
+    await tx.wait();
+    closeFheModal();
+    addTx('Close', '—', 'success', tx.hash);
+    showToast('Position closed');
+    await refreshData();
+    showPage('dashboard');
+  } catch(e) {
+    const msg = decodeRevertError(e);
+    document.querySelector('.fhe-step.active')?.classList.replace('active','error');
+    setTimeout(closeFheModal, 2500);
+    showToast(msg, true);
+  }
 }
 
 // ── FAUCET ──
@@ -1026,6 +1021,106 @@ async function handleFaucet() {
 }
 
 // ── SHOW BALANCE ──
+
+async function loadLiqPrice() {
+  openModal('liq-modal');
+  const valEl = document.getElementById('liq-modal-value');
+  const subEl = document.getElementById('liq-modal-sub');
+  valEl.textContent = '...';
+  subEl.textContent = 'Sign wallet popup to decrypt debt';
+
+  const _signer = signer || window.signer;
+  const _provider = provider || window.provider;
+
+  if (!_signer) {
+    valEl.textContent = '—';
+    subEl.textContent = 'Connect wallet first';
+    return;
+  }
+
+  try {
+    const userAddress = await _signer.getAddress();
+
+    // Need both collateral and debt decrypted
+    // First get collateral if not cached
+    if (cachedCwethBalance === null) {
+      subEl.textContent = 'Decrypt collateral first — click View Balance';
+      valEl.textContent = '—';
+      return;
+    }
+
+    // Get encrypted debt handle from VeilLending contract
+    const veil = new ethers.Contract(CONTRACT_ADDRESS, [
+      'function getDebtHandle(address user) external view returns (bytes32)'
+    ], _provider);
+
+    let debtHandle;
+    try {
+      debtHandle = await veil.getDebtHandle(userAddress);
+    } catch(e) {
+      subEl.textContent = 'No debt found — borrow first';
+      valEl.textContent = '—';
+      return;
+    }
+
+    if (!debtHandle || debtHandle === ethers.ZeroHash) {
+      valEl.textContent = 'No debt';
+      subEl.textContent = 'You have no outstanding debt';
+      return;
+    }
+
+    // Decrypt debt via backend
+    subEl.textContent = 'Sign wallet popup to decrypt debt...';
+
+    const prepRes = await fetch(`${BACKEND_URL}/decrypt-prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: debtHandle, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    });
+    const prepData = await prepRes.json();
+    if (!prepData.success) throw new Error(prepData.error);
+
+    const { keypair, eip712, startTimestamp, durationDays } = prepData;
+    const { domain, types: allTypes, message } = eip712;
+    const { EIP712Domain: _, ...signTypes } = allTypes;
+    const signature = await _signer.signTypedData({ ...domain, chainId: Number(domain.chainId) }, signTypes, message);
+
+    const decRes = await fetch(`${BACKEND_URL}/decrypt-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: debtHandle, contractAddress: CONTRACT_ADDRESS, userAddress, signature, keypair, startTimestamp, durationDays }),
+    });
+    const decData = await decRes.json();
+    if (!decData.success) throw new Error(decData.error);
+
+    const rawDebt = decData.balance ?? decData.value;
+    if (rawDebt === undefined || rawDebt === null) throw new Error('No debt value returned');
+
+    const debtNum = parseFloat(ethers.formatUnits(rawDebt.toString(), CWETH_DECIMALS));
+
+    if (debtNum === 0) {
+      valEl.textContent = 'No debt';
+      subEl.textContent = 'You have no outstanding debt';
+      return;
+    }
+
+    // Liquidation price = debt × 1.5 / collateral × ETH price
+    const liqRatio = (debtNum * 1.5) / cachedCwethBalance;
+    const liqUsd = liqRatio * liveEthPrice;
+
+    valEl.textContent = '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    subEl.textContent = `ETH below $${liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })} triggers liquidation · Debt: ${debtNum.toFixed(4)} cWETH`;
+
+    // Update dashboard
+    setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+
+  } catch(e) {
+    console.error('[LIQ PRICE]', e);
+    valEl.textContent = '—';
+    subEl.textContent = e.message || 'Decryption failed';
+  }
+}
+
 async function loadCwethBalance() {
  openModal('balance-modal');
  const el = document.getElementById('balance-modal-value');
@@ -1130,3 +1225,4 @@ window.addEventListener('load', async () => {
 </script>
 </body>
 </html>
+
