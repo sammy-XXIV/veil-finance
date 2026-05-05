@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VEIL Finance — Confidential Lending</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #050506;
+    --bg2: #0a0a0c;
+    --surface: #111114;
+    --surface2: #18181c;
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.1);
+    --text: #f0f0f0;
+    --text2: #888;
+    --text3: #555;
+    --accent: #f5c542;
+    --accent2: #5eead4;
+    --green: #10b981;
+    --red: #ef4444;
+    --purple: #a78bfa;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Geist', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── NOISE TEXTURE ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.4;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 40px;
+    height: 60px;
+    background: rgba(5,5,6,0.8);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-logo {
+    font-family: 'Geist Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .nav-logo .dot {
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease infinite;
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .nav-link {
+    color: var(--text2);
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.15s;
+  }
+
+  .nav-link:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+  .nav-cta {
+    padding: 7px 18px;
+    background: var(--accent);
+    color: #050506;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'Geist', sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+
+  .nav-cta:hover { opacity: 0.85; }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 120px 24px 80px;
+    overflow: hidden;
+  }
+
+  /* Grid background */
+  .hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(245,197,66,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(245,197,66,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 50%, black 30%, transparent 100%);
+    pointer-events: none;
+  }
+
+  /* Glow orb */
+  .hero-glow {
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(245,197,66,0.06) 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(245,197,66,0.08);
+    border: 1px solid rgba(245,197,66,0.2);
+    padding: 5px 14px;
+    border-radius: 20px;
+    margin-bottom: 32px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease infinite;
+  }
+
+  .hero h1 {
+    font-size: clamp(48px, 8vw, 88px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -2px;
+    margin-bottom: 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero h1 .accent { color: var(--accent); font-style: italic; }
+  .hero h1 .dim { color: var(--text3); }
+
+  .hero-sub {
+    font-size: 18px;
+    color: var(--text2);
+    max-width: 520px;
+    line-height: 1.7;
+    margin-bottom: 48px;
+    font-weight: 300;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+    margin-bottom: 80px;
+  }
+
+  .btn-primary {
+    padding: 14px 32px;
+    background: var(--accent);
+    color: #050506;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'Geist', sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.15s, transform 0.15s;
+  }
+
+  .btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+
+  .btn-outline {
+    padding: 14px 32px;
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 500;
+    font-family: 'Geist', sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-outline:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+  /* ── STATS ROW ── */
+  .hero-stats {
+    display: flex;
+    gap: 48px;
+    position: relative;
+    z-index: 1;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .stat-item { text-align: center; }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .stat-value .accent { color: var(--accent); }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: 'Geist Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 4px;
+  }
+
+  /* ── SECTION ── */
+  section {
+    position: relative;
+    z-index: 1;
+    padding: 100px 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .section-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+    line-height: 1.1;
+  }
+
+  .section-sub {
+    font-size: 16px;
+    color: var(--text2);
+    max-width: 560px;
+    line-height: 1.7;
+    font-weight: 300;
+    margin-bottom: 64px;
+  }
+
+  /* ── HOW IT WORKS ── */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 2px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .step {
+    background: var(--bg);
+    padding: 36px 32px;
+    position: relative;
+    transition: background 0.2s;
+  }
+
+  .step:hover { background: var(--surface); }
+
+  .step-num {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+  }
+
+  .step-icon {
+    font-size: 28px;
+    margin-bottom: 16px;
+    display: block;
+  }
+
+  .step h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+
+  .step p {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  /* ── COMPARISON TABLE ── */
+  .compare-wrap {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .compare-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .compare-row:last-child { border-bottom: none; }
+
+  .compare-cell {
+    padding: 18px 24px;
+    font-size: 13px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .compare-cell:last-child { border-right: none; }
+
+  .compare-header {
+    background: var(--surface);
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text2);
+  }
+
+  .compare-header.veil-col { color: var(--accent); }
+
+  .yes { color: var(--green); }
+  .no { color: var(--red); }
+  .partial { color: var(--accent); }
+
+  /* ── FHE EXPLAINER ── */
+  .fhe-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  @media (max-width: 640px) { .fhe-grid { grid-template-columns: 1fr; } }
+
+  .fhe-card {
+    background: var(--bg);
+    padding: 36px;
+    transition: background 0.2s;
+  }
+
+  .fhe-card:hover { background: var(--surface); }
+
+  .fhe-card-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .fhe-card-label.exposed { color: var(--red); }
+  .fhe-card-label.hidden { color: var(--green); }
+
+  .fhe-card h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  .fhe-card p {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  .fhe-list {
+    list-style: none;
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .fhe-list li {
+    font-size: 13px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Geist Mono', monospace;
+  }
+
+  .fhe-list li::before {
+    content: '—';
+    color: var(--text3);
+    flex-shrink: 0;
+  }
+
+  /* ── CODE BLOCK ── */
+  .code-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-x: auto;
+    margin-top: 32px;
+  }
+
+  .code-block .comment { color: var(--text3); }
+  .code-block .keyword { color: var(--purple); }
+  .code-block .fn { color: var(--accent2); }
+  .code-block .str { color: var(--accent); }
+  .code-block .type { color: var(--green); }
+
+  /* ── CTA SECTION ── */
+  .cta-section {
+    text-align: center;
+    padding: 100px 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .cta-inner {
+    max-width: 600px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    padding: 64px 48px;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cta-inner::before {
+    content: '';
+    position: absolute;
+    top: -100px; left: 50%;
+    transform: translateX(-50%);
+    width: 400px; height: 200px;
+    background: radial-gradient(ellipse, rgba(245,197,66,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cta-inner h2 {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 16px;
+  }
+
+  .cta-inner p {
+    font-size: 15px;
+    color: var(--text2);
+    margin-bottom: 36px;
+    line-height: 1.6;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 1;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-logo {
+    font-family: 'Geist Mono', monospace;
+    font-size: 13px;
+    color: var(--text3);
+    letter-spacing: 2px;
+  }
+
+  .footer-links {
+    display: flex;
+    gap: 24px;
+  }
+
+  .footer-link {
+    font-size: 13px;
+    color: var(--text3);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .footer-link:hover { color: var(--text2); }
+
+  .footer-right {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    color: var(--text3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .footer-right .dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s ease infinite;
+  }
+
+  /* ── DIVIDER ── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 0;
+  }
+
+  /* ── ANIMATIONS ── */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .fade-up {
+    opacity: 0;
+    animation: fadeUp 0.6s ease forwards;
+  }
+
+  .fade-up:nth-child(1) { animation-delay: 0.1s; }
+  .fade-up:nth-child(2) { animation-delay: 0.2s; }
+  .fade-up:nth-child(3) { animation-delay: 0.3s; }
+  .fade-up:nth-child(4) { animation-delay: 0.4s; }
+  .fade-up:nth-child(5) { animation-delay: 0.5s; }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; }
+    .nav-links { display: none; }
+    .hero { padding: 100px 20px 60px; }
+    .hero-stats { gap: 32px; }
+    .compare-row { grid-template-columns: 1fr; }
+    .compare-cell { border-right: none; border-bottom: 1px solid var(--border); }
+    footer { padding: 24px 20px; }
+    .cta-inner { padding: 40px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <span class="dot"></span>
+    VEIL
+  </div>
+  <div class="nav-links">
+    <a href="#how-it-works" class="nav-link">How it works</a>
+    <a href="#privacy" class="nav-link">Privacy</a>
+    <a href="#compare" class="nav-link">Compare</a>
+    <a href="https://sepolia.etherscan.io/address/0x2452f228d19f61bAf964BF22A4B349120eb533a4" target="_blank" class="nav-link">Contract ↗</a>
+  </div>
+  <a href="./app" class="nav-cta">Launch App</a>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-glow"></div>
+
+  <div class="hero-badge fade-up">Built on Zama FHEVM · Sepolia</div>
+
+  <h1 class="fade-up">
+    Lend without<br>
+    <span class="accent">revealing</span> anything<span class="dim">.</span>
+  </h1>
+
+  <p class="hero-sub fade-up">
+    VEIL is a confidential lending protocol powered by Fully Homomorphic Encryption.
+    Your collateral, debt, and health factor are encrypted onchain — invisible to liquidation bots.
+  </p>
+
+  <div class="hero-actions fade-up">
+    <a href="./app" class="btn-primary">Launch App →</a>
+    <a href="https://sepolia.etherscan.io/address/0x2452f228d19f61bAf964BF22A4B349120eb533a4" target="_blank" class="btn-outline">
+      View Contract ↗
+    </a>
+  </div>
+
+  <div class="hero-stats fade-up">
+    <div class="stat-item">
+      <div class="stat-value"><span class="accent">FHE</span></div>
+      <div class="stat-label">Encryption</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">66<span style="color:var(--text3);font-size:18px">%</span></div>
+      <div class="stat-label">Max LTV</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value">150<span style="color:var(--text3);font-size:18px">%</span></div>
+      <div class="stat-label">Liq. Threshold</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value" style="color:var(--green)">Live</div>
+      <div class="stat-label">Sepolia Testnet</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works">
+  <div class="section-label">How it works</div>
+  <h2 class="section-title">Four steps.<br>Zero exposure.</h2>
+  <p class="section-sub">
+    Every position is encrypted end-to-end using Zama's FHEVM.
+    No plaintext amounts ever touch the chain.
+  </p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">01</div>
+      <span class="step-icon">🔐</span>
+      <h3>Encrypt</h3>
+      <p>Your deposit amount is encrypted client-side using FHE before it leaves your browser. The ciphertext is the only thing sent onchain.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">02</div>
+      <span class="step-icon">🏦</span>
+      <h3>Deposit</h3>
+      <p>Deposit cWETH as encrypted collateral. The contract stores an encrypted handle — no plaintext amount is ever written to storage.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">03</div>
+      <span class="step-icon">💸</span>
+      <h3>Borrow</h3>
+      <p>Borrow against your collateral. The LTV check runs entirely in FHE — the result is an encrypted boolean. No bot can read it.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">04</div>
+      <span class="step-icon">🔓</span>
+      <h3>Decrypt</h3>
+      <p>Only you can decrypt your balance. Sign a message with your wallet — the backend verifies ownership and returns your plaintext balance.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- PRIVACY -->
+<section id="privacy">
+  <div class="section-label">Privacy model</div>
+  <h2 class="section-title">What bots see.<br>What they don't.</h2>
+  <p class="section-sub">
+    Liquidation bots need collateral value, debt value, and health factor to operate.
+    VEIL encrypts all three.
+  </p>
+
+  <div class="fhe-grid">
+    <div class="fhe-card">
+      <div class="fhe-card-label exposed">⚠ Exposed on Aave / Compound</div>
+      <h3>Everything is public</h3>
+      <p>Any bot can read your position onchain and calculate your exact liquidation price in real time.</p>
+      <ul class="fhe-list">
+        <li>Collateral amount — visible</li>
+        <li>Debt amount — visible</li>
+        <li>Health factor — calculable</li>
+        <li>Liquidation price — calculable</li>
+        <li>Position size — visible</li>
+      </ul>
+    </div>
+    <div class="fhe-card">
+      <div class="fhe-card-label hidden">✓ Hidden on VEIL</div>
+      <h3>Everything is encrypted</h3>
+      <p>Bots see only a boolean — this address has a position. Nothing else. Health factor computation runs in FHE onchain.</p>
+      <ul class="fhe-list">
+        <li>Collateral amount — encrypted</li>
+        <li>Debt amount — encrypted</li>
+        <li>Health factor — FHE ebool, never revealed</li>
+        <li>Liquidation price — unknowable</li>
+        <li>Position size — encrypted</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="code-block">
+    <span class="comment">// What a liquidation bot sees on Aave</span><br>
+    <span class="keyword">const</span> health = collateral × price / debt × price; <span class="comment">// ✓ readable</span><br>
+    <span class="keyword">if</span> (health &lt; <span class="str">1.5</span>) liquidate(); <span class="comment">// ✓ works</span><br><br>
+    <span class="comment">// What a liquidation bot sees on VEIL</span><br>
+    <span class="keyword">const</span> collateral = <span class="fn">getCollateral</span>(address); <span class="comment">// → encrypted bytes</span><br>
+    <span class="keyword">const</span> debt = <span class="fn">getDebt</span>(address); <span class="comment">// → encrypted bytes</span><br>
+    <span class="keyword">const</span> health = collateral × price / debt × price; <span class="comment">// → ??? × price = ???</span><br>
+    <span class="comment">// Bot gives up. Can't compute. Can't liquidate.</span>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- COMPARE -->
+<section id="compare">
+  <div class="section-label">Comparison</div>
+  <h2 class="section-title">VEIL vs traditional<br>lending protocols.</h2>
+  <p class="section-sub">
+    FHE changes the fundamental trust model of DeFi lending.
+  </p>
+
+  <div class="compare-wrap">
+    <div class="compare-row">
+      <div class="compare-cell compare-header">Feature</div>
+      <div class="compare-cell compare-header">Aave / Compound</div>
+      <div class="compare-cell compare-header veil-col">VEIL Finance</div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">Collateral hidden</div>
+      <div class="compare-cell"><span class="no">✗ Public</span></div>
+      <div class="compare-cell"><span class="yes">✓ FHE Encrypted</span></div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">Debt hidden</div>
+      <div class="compare-cell"><span class="no">✗ Public</span></div>
+      <div class="compare-cell"><span class="yes">✓ FHE Encrypted</span></div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">Health factor hidden</div>
+      <div class="compare-cell"><span class="no">✗ Calculable</span></div>
+      <div class="compare-cell"><span class="yes">✓ FHE ebool only</span></div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">Bot-resistant</div>
+      <div class="compare-cell"><span class="no">✗ Fully exposed</span></div>
+      <div class="compare-cell"><span class="yes">✓ Bots are blind</span></div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">Deposit amounts onchain</div>
+      <div class="compare-cell"><span class="no">✗ Plaintext</span></div>
+      <div class="compare-cell"><span class="yes">✓ Ciphertext only</span></div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">LTV enforced</div>
+      <div class="compare-cell"><span class="yes">✓ Onchain</span></div>
+      <div class="compare-cell"><span class="yes">✓ FHE select</span></div>
+    </div>
+    <div class="compare-row">
+      <div class="compare-cell">Open source</div>
+      <div class="compare-cell"><span class="yes">✓</span></div>
+      <div class="compare-cell"><span class="yes">✓ BSD-3-Clause</span></div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<!-- CTA -->
+<div class="cta-section">
+  <div class="cta-inner">
+    <div class="hero-badge" style="margin-bottom:24px">Live on Sepolia Testnet</div>
+    <h2>Try VEIL today.</h2>
+    <p>Deposit cWETH, borrow against it, and watch liquidation bots find nothing.</p>
+    <a href="./app" class="btn-primary">Launch App →</a>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">VEIL</div>
+  <div class="footer-links">
+    <a href="https://github.com/sammy-XXIV/veil-finance" target="_blank" class="footer-link">GitHub</a>
+    <a href="https://sepolia.etherscan.io/address/0x2452f228d19f61bAf964BF22A4B349120eb533a4" target="_blank" class="footer-link">Contract</a>
+    <a href="https://www.zama.ai" target="_blank" class="footer-link">Powered by Zama</a>
+  </div>
+  <div class="footer-right">
+    <span class="dot"></span>
+    Sepolia · 0x2452...33a4
+  </div>
+</footer>
+
+</body>
+</html>
+
