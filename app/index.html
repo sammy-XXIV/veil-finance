@@ -972,13 +972,19 @@ async function handleBorrow() {
  const raw = parseFloat(document.getElementById('borrow-amount-input').value);
  if (!raw || raw <= 0) { showToast('Enter a valid amount', true); return; }
  const amountWei = ethers.parseUnits(raw.toString(), CWETH_DECIMALS);
-  // LTV check using cached balance
-  if (cachedCollateralBalance !== null) {
-    const maxBorrow = cachedCollateralBalance * 0.66;
-    if (parseFloat(ethers.formatUnits(amountWei, CWETH_DECIMALS)) > maxBorrow) {
-      showToast('Exceeds 66% LTV. Max: ' + maxBorrow.toFixed(4) + ' cWETH', true);
+  // Auto-decrypt collateral if not cached for LTV check
+  if (cachedCollateralBalance === null) {
+    showToast('Decrypting collateral for LTV check...', false);
+    await loadCollateralBalance();
+    if (cachedCollateralBalance === null) {
+      showToast('Could not decrypt collateral — try again', true);
       return;
     }
+  }
+  const maxBorrow = cachedCollateralBalance * 0.66;
+  if (parseFloat(ethers.formatUnits(amountWei, CWETH_DECIMALS)) > maxBorrow) {
+    showToast('Exceeds 66% LTV. Max: ' + maxBorrow.toFixed(4) + ' cWETH', true);
+    return;
   }
 
   // Pool balance check
@@ -1049,6 +1055,11 @@ async function handleRepay() {
 // ── CLOSE POSITION ──
 async function handleClosePosition() {
   if (!signer) { showToast('Connect wallet first', true); return; }
+  // Auto-decrypt debt if not cached
+  if (cachedDebtBalance === null) {
+    showToast('Decrypting debt balance...', false);
+    await loadDebtBalance();
+  }
   if (cachedDebtBalance !== null && cachedDebtBalance > 0) {
     showToast('Repay your debt before closing', true);
     return;
