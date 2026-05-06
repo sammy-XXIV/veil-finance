@@ -612,7 +612,8 @@ let provider = null;
 let signer = null;
 let txHistory = [];
 let liveEthPrice = 3000;
-let cachedCwethBalance = sessionStorage.getItem('veil_collateral') ? parseFloat(sessionStorage.getItem('veil_collateral')) : null;
+let cachedCwethBalance = null; // wallet balance
+let cachedCollateralBalance = sessionStorage.getItem('veil_collateral') ? parseFloat(sessionStorage.getItem('veil_collateral')) : null; // deposited collateral
 let cachedDebtBalance = sessionStorage.getItem('veil_debt') ? parseFloat(sessionStorage.getItem('veil_debt')) : null;
 
 // ── HELPERS ──
@@ -736,7 +737,7 @@ async function loadFromCache(address) {
     if (!data.success) return;
 
     if (data.collateral !== null) {
-      cachedCwethBalance = parseFloat(data.collateral);
+      cachedCollateralBalance = parseFloat(data.collateral);
       sessionStorage.setItem('veil_collateral', data.collateral);
     }
     if (data.debt !== null) {
@@ -842,19 +843,19 @@ async function fetchPosition() {
     document.getElementById('dash-has-pos').style.display = exists ? 'block' : 'none';
 
     if (exists) {
-      setText('dash-collateral', cachedCwethBalance !== null ? cachedCwethBalance.toFixed(4) + ' cWETH' : 'Encrypted');
+      setText('dash-collateral', cachedCollateralBalance !== null ? cachedCollateralBalance.toFixed(4) + ' cWETH' : 'Encrypted');
       setText('dash-collateral-usd', '—');
       setText('dash-debt', 'Encrypted');
       setText('dash-debt-usd', '—');
-      setText('dash-max-borrow', cachedCwethBalance !== null ? (cachedCwethBalance * 0.66).toFixed(4) + ' cWETH' : 'Decrypt to view');
+      setText('dash-max-borrow', cachedCollateralBalance !== null ? (cachedCollateralBalance * 0.66).toFixed(4) + ' cWETH' : 'Decrypt to view');
       setText('dash-liq-price', 'Encrypted');
-      setText('pos-collateral', cachedCwethBalance !== null ? cachedCwethBalance.toFixed(4) + ' cWETH' : 'Encrypted');
+      setText('pos-collateral', cachedCollateralBalance !== null ? cachedCollateralBalance.toFixed(4) + ' cWETH' : 'Encrypted');
       setText('pos-collateral-usd', '—');
       setText('pos-debt', 'Encrypted');
       setText('pos-debt-usd', '—');
-      setText('borrow-available', cachedCwethBalance !== null ? (cachedCwethBalance * 0.66).toFixed(4) + ' cWETH' : 'Decrypt to view');
+      setText('borrow-available', cachedCollateralBalance !== null ? (cachedCollateralBalance * 0.66).toFixed(4) + ' cWETH' : 'Decrypt to view');
       setText('repay-debt-display', 'Encrypted');
-      setText('repay-collateral-display', cachedCwethBalance !== null ? cachedCwethBalance.toFixed(4) + ' cWETH' : 'Encrypted');
+      setText('repay-collateral-display', cachedCollateralBalance !== null ? cachedCollateralBalance.toFixed(4) + ' cWETH' : 'Encrypted');
 
       const depBtn = document.getElementById('deposit-btn');
       if (depBtn) depBtn.textContent = 'Add Collateral';
@@ -973,8 +974,8 @@ async function handleBorrow() {
  if (!raw || raw <= 0) { showToast('Enter a valid amount', true); return; }
  const amountWei = ethers.parseUnits(raw.toString(), CWETH_DECIMALS);
   // LTV check using cached balance
-  if (cachedCwethBalance !== null) {
-    const maxBorrow = cachedCwethBalance * 0.66;
+  if (cachedCollateralBalance !== null) {
+    const maxBorrow = cachedCollateralBalance * 0.66;
     if (parseFloat(ethers.formatUnits(amountWei, CWETH_DECIMALS)) > maxBorrow) {
       showToast('Exceeds 66% LTV. Max: ' + maxBorrow.toFixed(4) + ' cWETH', true);
       return;
@@ -1171,7 +1172,7 @@ async function loadCollateralBalance() {
 
     const raw = decData.balance ?? decData.value;
     const collNum = parseFloat(ethers.formatUnits(raw.toString(), CWETH_DECIMALS));
-    cachedCwethBalance = collNum;
+    cachedCollateralBalance = collNum;
     sessionStorage.setItem('veil_collateral', collNum.toString());
     saveToCache({ collateral: collNum });
 
@@ -1269,7 +1270,7 @@ async function loadCollateralBalance() {
 
     const raw = decData.balance ?? decData.value;
     const collNum = parseFloat(ethers.formatUnits(raw.toString(), CWETH_DECIMALS));
-    cachedCwethBalance = collNum;
+    cachedCollateralBalance = collNum;
     sessionStorage.setItem('veil_collateral', collNum.toString());
     saveToCache({ collateral: collNum });
 
@@ -1390,8 +1391,8 @@ async function loadDebtBalance() {
     if (repayBtn) { repayBtn.textContent = 'Re-decrypt'; }
 
     // Update liq price if collateral cached
-    if (cachedCwethBalance !== null && debtNum > 0) {
-      const liqRatio = (debtNum * 1.5) / cachedCwethBalance;
+    if (cachedCollateralBalance !== null && debtNum > 0) {
+      const liqRatio = (debtNum * 1.5) / cachedCollateralBalance;
       const liqUsd = liqRatio * liveEthPrice;
       setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
       const liqBtn = document.getElementById('liq-decrypt-btn');
@@ -1614,4 +1615,3 @@ window.addEventListener('load', async () => {
 </script>
 </body>
 </html>
-
