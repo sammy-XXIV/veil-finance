@@ -359,7 +359,7 @@ nav {
  <div class="page-header"><div class="page-title">Dashboard</div><div class="page-sub">Your encrypted position overview</div></div>
  <div class="metrics-grid">
  <div class="metric"><div class="metric-label">Collateral</div><div class="metric-value" id="dash-collateral" style="color:var(--green)">—</div><div class="metric-sub" id="dash-collateral-usd"></div></div>
- <div class="metric"><div class="metric-label">Debt</div><div class="metric-value" id="dash-debt" style="color:var(--red)">—</div><div class="metric-sub" id="dash-debt-usd"></div></div>
+ <div class="metric"><div class="metric-label">Debt</div><div class="metric-value" id="dash-debt" style="color:var(--red)">—</div><div class="metric-sub"><button id="debt-decrypt-btn" onclick="loadDebtBalance()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;font-family:'Geist Mono',monospace">Decrypt</button></div></div>
  <div class="metric"><div class="metric-label">Max Borrow</div><div class="metric-value" id="dash-max-borrow" style="color:var(--accent)">—</div><div class="metric-sub">66% of collateral</div></div>
  <div class="metric"><div class="metric-label">Liq. Price</div><div class="metric-value" id="dash-liq-price" style="color:var(--red)">—</div><div class="metric-sub"><button id="liq-decrypt-btn" onclick="loadLiqPrice()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;font-family:'Geist Mono',monospace">Decrypt</button></div></div>
  </div>
@@ -497,6 +497,7 @@ nav {
  <div style="display:flex;justify-content:space-between">
  <span style="color:var(--text2)">Outstanding Debt</span>
  <span style="font-weight:600;color:var(--red)" id="repay-debt-display">—</span>
+              <button id="repay-debt-decrypt-btn" onclick="loadDebtBalance()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:4px 0 0;font-family:'Geist Mono',monospace">Decrypt</button>
  </div>
  </div>
  <div class="form-group">
@@ -556,7 +557,7 @@ nav {
  <div class="card">
  <div class="card-header"><div class="card-title">Contracts</div></div>
  <div class="card-body">
- <div class="pos-item"><div class="pos-item-label">VeilLending</div><a href="https://sepolia.etherscan.io/address/0x366b34bdC8ca3477A9884E40F1E385aAe54941F2" target="_blank" style="color:var(--accent);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x2452...33a4 ↗</a></div>
+ <div class="pos-item"><div class="pos-item-label">VeilLending</div><a href="https://sepolia.etherscan.io/address/0x3527F3a3eAf82DDC70E39eD1d225A35EB59a7737" target="_blank" style="color:var(--accent);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x2452...33a4 ↗</a></div>
  <div class="pos-item"><div class="pos-item-label">cWETHMock</div><a href="https://sepolia.etherscan.io/address/0x46208622DA27d91db4f0393733C8BA082ed83158" target="_blank" style="color:var(--accent2);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x4620...3158 ↗</a></div>
  </div>
  </div>
@@ -569,7 +570,7 @@ nav {
 // VEIL Finance — Core Application
 // ══════════════════════════════════════════════════════════
 
-const CONTRACT_ADDRESS = '0x366b34bdC8ca3477A9884E40F1E385aAe54941F2';
+const CONTRACT_ADDRESS = '0x3527F3a3eAf82DDC70E39eD1d225A35EB59a7737';
 const CWETH_ADDRESS = '0x46208622DA27d91db4f0393733C8BA082ed83158';
 const CWETH_DECIMALS = 8;
 const BACKEND_URL = 'https://veil-backend-2gki.onrender.com';
@@ -611,8 +612,8 @@ let provider = null;
 let signer = null;
 let txHistory = [];
 let liveEthPrice = 3000;
-let cachedCwethBalance = null;
-let cachedDebtBalance = null;
+let cachedCwethBalance = sessionStorage.getItem('veil_collateral') ? parseFloat(sessionStorage.getItem('veil_collateral')) : null;
+let cachedDebtBalance = sessionStorage.getItem('veil_debt') ? parseFloat(sessionStorage.getItem('veil_debt')) : null;
 
 // ── HELPERS ──
 function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
@@ -652,11 +653,12 @@ async function fetchEthPrice() {
 
 // ── TX LOG ──
 function addTx(action, amount, status, hash) {
- txHistory.unshift({ id: Date.now(), action, amount, status, hash, time: new Date().toLocaleTimeString() });
- if (txHistory.length > 10) txHistory.pop();
- renderTxFeed();
+function addTx(action, amount, status, hash) {
+  txHistory.unshift({ id: Date.now(), action, amount, status, hash, time: new Date().toLocaleTimeString() });
+  if (txHistory.length > 10) txHistory.pop();
+  renderTxFeed();
+  saveToCache({ txHistory });
 }
-function renderTxFeed() {
  const feed = document.getElementById('tx-feed');
  if (!feed) return;
  setText('tx-count', txHistory.length.toString());
@@ -726,6 +728,39 @@ async function connectWallet() {
  }
 }
 
+
+async function loadFromCache(address) {
+  try {
+    const res = await fetch(`${BACKEND_URL}/cache/${address}`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    if (data.collateral !== null) {
+      cachedCwethBalance = parseFloat(data.collateral);
+      sessionStorage.setItem('veil_collateral', data.collateral);
+    }
+    if (data.debt !== null) {
+      cachedDebtBalance = parseFloat(data.debt);
+      sessionStorage.setItem('veil_debt', data.debt);
+    }
+    if (data.txHistory && data.txHistory.length > 0) {
+      txHistory = data.txHistory;
+      renderTxFeed();
+    }
+  } catch(e) { console.warn('Cache load failed:', e); }
+}
+
+async function saveToCache(updates) {
+  if (!currentUser) return;
+  try {
+    await fetch(`${BACKEND_URL}/cache`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: currentUser, ...updates }),
+    });
+  } catch(e) { console.warn('Cache save failed:', e); }
+}
+
 async function onConnected(address) {
  currentUser = address;
  provider = new ethers.BrowserProvider(window.ethereum);
@@ -746,7 +781,8 @@ async function onConnected(address) {
 
  checkNetwork();
  showPage('dashboard');
- await refreshData();
+  await loadFromCache(currentUser);
+  await refreshData();
  showToast('Wallet connected');
 
  window.ethereum.on('accountsChanged', accs => { if (!accs.length) disconnectWallet(); else onConnected(accs[0]); });
@@ -1064,6 +1100,119 @@ async function handleFaucet() {
 
 // ── SHOW BALANCE ──
 
+
+async function loadDebtBalance() {
+  const debtEl = document.getElementById('dash-debt');
+  const debtBtn = document.getElementById('debt-decrypt-btn');
+  const repayEl = document.getElementById('repay-debt-display');
+  const repayBtn = document.getElementById('repay-debt-decrypt-btn');
+
+  if (debtEl) debtEl.textContent = 'Decrypting...';
+  if (debtBtn) debtBtn.textContent = '';
+
+  const _signer = signer || window.signer;
+  const _provider = provider || window.provider;
+
+  if (!_signer) {
+    if (debtEl) debtEl.textContent = 'Encrypted';
+    if (debtBtn) debtBtn.textContent = 'Decrypt';
+    showToast('Connect wallet first', true);
+    return;
+  }
+
+  try {
+    const userAddress = await _signer.getAddress();
+
+    // Get debt handle from contract
+    const veil = new ethers.Contract(CONTRACT_ADDRESS, [
+      'function getDebtHandle(address user) external returns (bytes32)'
+    ], _signer);
+
+    let debtHandle;
+    try {
+      const tx = await veil.getDebtHandle(userAddress, { gasLimit: 500000 });
+      const receipt = await tx.wait();
+      // Get handle from return value via static call
+      const veilStatic = new ethers.Contract(CONTRACT_ADDRESS, [
+        'function getDebtHandle(address user) external returns (bytes32)'
+      ], _provider);
+      debtHandle = await veilStatic.getDebtHandle.staticCall(userAddress);
+    } catch(e) {
+      if (debtEl) debtEl.textContent = 'No debt';
+      if (debtBtn) { debtBtn.textContent = 'Decrypt'; }
+      if (repayEl) repayEl.textContent = 'No debt';
+      if (repayBtn) { repayBtn.textContent = 'Decrypt'; }
+      cachedDebtBalance = 0;
+      sessionStorage.setItem('veil_debt', '0');
+      return;
+    }
+
+    if (!debtHandle || debtHandle === ethers.ZeroHash) {
+      if (debtEl) debtEl.textContent = 'No debt';
+      if (debtBtn) debtBtn.textContent = 'Decrypt';
+      if (repayEl) repayEl.textContent = 'No debt';
+      cachedDebtBalance = 0;
+      sessionStorage.setItem('veil_debt', '0');
+      return;
+    }
+
+    // Decrypt via backend
+    const prepRes = await fetch(`${BACKEND_URL}/decrypt-prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: debtHandle, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    });
+    const prepData = await prepRes.json();
+    if (!prepData.success) throw new Error(prepData.error);
+
+    const { keypair, eip712, startTimestamp, durationDays } = prepData;
+    const { domain, types: allTypes, message } = eip712;
+    const { EIP712Domain: _, ...signTypes } = allTypes;
+    const signature = await _signer.signTypedData(
+      { ...domain, chainId: Number(domain.chainId) },
+      signTypes,
+      message
+    );
+
+    const decRes = await fetch(`${BACKEND_URL}/decrypt-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: debtHandle, contractAddress: CONTRACT_ADDRESS, userAddress, signature, keypair, startTimestamp, durationDays }),
+    });
+    const decData = await decRes.json();
+    if (!decData.success) throw new Error(decData.error);
+
+    const raw = decData.balance ?? decData.value;
+    const debtNum = parseFloat(ethers.formatUnits(raw.toString(), CWETH_DECIMALS));
+    cachedDebtBalance = debtNum;
+    sessionStorage.setItem('veil_debt', debtNum.toString());
+    saveToCache({ debt: debtNum });
+
+    const debtStr = debtNum > 0 ? debtNum.toFixed(4) + ' cWETH' : 'No debt';
+    if (debtEl) debtEl.textContent = debtStr;
+    if (debtBtn) { debtBtn.textContent = 'Re-decrypt'; }
+    if (repayEl) repayEl.textContent = debtStr;
+    if (repayBtn) { repayBtn.textContent = 'Re-decrypt'; }
+
+    // Update liq price if collateral cached
+    if (cachedCwethBalance !== null && debtNum > 0) {
+      const liqRatio = (debtNum * 1.5) / cachedCwethBalance;
+      const liqUsd = liqRatio * liveEthPrice;
+      setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+      const liqBtn = document.getElementById('liq-decrypt-btn');
+      if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
+    }
+
+  } catch(e) {
+    console.error('[DEBT DECRYPT]', e);
+    if (debtEl) debtEl.textContent = 'Encrypted';
+    if (debtBtn) debtBtn.textContent = 'Decrypt';
+    if (repayEl) repayEl.textContent = 'Encrypted';
+    if (repayBtn) repayBtn.textContent = 'Decrypt';
+    showToast(decodeRevertError(e), true);
+  }
+}
+
 async function loadLiqPrice() {
   // Show loading state inline on dashboard
   const liqEl = document.getElementById('dash-liq-price');
@@ -1103,13 +1252,13 @@ async function loadLiqPrice() {
       debtHandle = await veil.getDebtHandle(userAddress);
     } catch(e) {
       if (liqEl) liqEl.textContent = 'No debt';
-      if (liqBtn) liqBtn.style.display = 'none';
+      if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
       return;
     }
 
     if (!debtHandle || debtHandle === ethers.ZeroHash) {
       setText('dash-liq-price', 'No debt');
-      if (liqBtn) liqBtn.style.display = 'none';
+      if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
       return;
     }
 
@@ -1142,10 +1291,11 @@ async function loadLiqPrice() {
 
     const debtNum = parseFloat(ethers.formatUnits(rawDebt.toString(), CWETH_DECIMALS));
     cachedDebtBalance = debtNum;
+    sessionStorage.setItem('veil_debt', debtNum);
 
     if (debtNum === 0) {
       setText('dash-liq-price', 'No debt');
-      if (liqBtn) liqBtn.style.display = 'none';
+      if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
       return;
     }
 
@@ -1154,7 +1304,7 @@ async function loadLiqPrice() {
     const liqUsd = liqRatio * liveEthPrice;
 
     setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
-    if (liqBtn) liqBtn.style.display = 'none';
+    if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
 
   } catch(e) {
     console.error('[LIQ PRICE]', e);
@@ -1221,6 +1371,8 @@ async function loadCwethBalance() {
       el.textContent = balNum.toFixed(4);
       setText('deposit-balance-display', balNum.toFixed(4));
       cachedCwethBalance = balNum;
+      sessionStorage.setItem('veil_collateral', balNum);
+      saveToCache({ collateral: balNum });
       const depInput = document.getElementById('deposit-amount-input');
       if (depInput) { depInput.max = balNum.toString(); depInput.placeholder = 'Max: ' + balNum.toFixed(4) + ' cWETH'; }
       setText('deposit-balance-hint', 'Balance: ' + balNum.toFixed(4) + ' cWETH');
