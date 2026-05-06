@@ -784,7 +784,7 @@ async function refreshData() {
 
 async function fetchStats() {
  try {
- const rpcProvider = provider || new ethers.JsonRpcProvider('https://rpc.sepolia.org');
+ const rpcProvider = provider || new ethers.JsonRpcProvider('https://ethereum-sepolia-rpc.publicnode.com');
  const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, rpcProvider);
  const positions = await contract.getStats();
     setText('ls-pool', 'Encrypted');
