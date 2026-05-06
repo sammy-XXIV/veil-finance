@@ -358,7 +358,7 @@ nav {
  <div id="page-dashboard" class="app-page">
  <div class="page-header"><div class="page-title">Dashboard</div><div class="page-sub">Your encrypted position overview</div></div>
  <div class="metrics-grid">
- <div class="metric"><div class="metric-label">Collateral</div><div class="metric-value" id="dash-collateral" style="color:var(--green)">—</div><div class="metric-sub" id="dash-collateral-usd"></div></div>
+ <div class="metric"><div class="metric-label">Collateral</div><div class="metric-value" id="dash-collateral" style="color:var(--green)">—</div><div class="metric-sub"><button id="collateral-decrypt-btn" onclick="loadCollateralBalance()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;font-family:'Geist Mono',monospace">Decrypt</button></div></div>
  <div class="metric"><div class="metric-label">Debt</div><div class="metric-value" id="dash-debt" style="color:var(--red)">—</div><div class="metric-sub"><button id="debt-decrypt-btn" onclick="loadDebtBalance()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;font-family:'Geist Mono',monospace">Decrypt</button></div></div>
  <div class="metric"><div class="metric-label">Max Borrow</div><div class="metric-value" id="dash-max-borrow" style="color:var(--accent)">—</div><div class="metric-sub">66% of collateral</div></div>
  <div class="metric"><div class="metric-label">Liq. Price</div><div class="metric-value" id="dash-liq-price" style="color:var(--red)">—</div><div class="metric-sub"><button id="liq-decrypt-btn" onclick="loadLiqPrice()" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:0;font-family:'Geist Mono',monospace">Decrypt</button></div></div>
@@ -557,7 +557,7 @@ nav {
  <div class="card">
  <div class="card-header"><div class="card-title">Contracts</div></div>
  <div class="card-body">
- <div class="pos-item"><div class="pos-item-label">VeilLending</div><a href="https://sepolia.etherscan.io/address/0x3527F3a3eAf82DDC70E39eD1d225A35EB59a7737" target="_blank" style="color:var(--accent);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x2452...33a4 ↗</a></div>
+ <div class="pos-item"><div class="pos-item-label">VeilLending</div><a href="https://sepolia.etherscan.io/address/0x8B694DD1B76B39c30CE5106a4752dD2729482bEB" target="_blank" style="color:var(--accent);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x2452...33a4 ↗</a></div>
  <div class="pos-item"><div class="pos-item-label">cWETHMock</div><a href="https://sepolia.etherscan.io/address/0x46208622DA27d91db4f0393733C8BA082ed83158" target="_blank" style="color:var(--accent2);font-family:'Geist Mono',monospace;font-size:11px;text-decoration:none">0x4620...3158 ↗</a></div>
  </div>
  </div>
@@ -570,7 +570,7 @@ nav {
 // VEIL Finance — Core Application
 // ══════════════════════════════════════════════════════════
 
-const CONTRACT_ADDRESS = '0x3527F3a3eAf82DDC70E39eD1d225A35EB59a7737';
+const CONTRACT_ADDRESS = '0x8B694DD1B76B39c30CE5106a4752dD2729482bEB';
 const CWETH_ADDRESS = '0x46208622DA27d91db4f0393733C8BA082ed83158';
 const CWETH_DECIMALS = 8;
 const BACKEND_URL = 'https://veil-backend-2gki.onrender.com';
@@ -653,12 +653,12 @@ async function fetchEthPrice() {
 
 // ── TX LOG ──
 function addTx(action, amount, status, hash) {
-function addTx(action, amount, status, hash) {
   txHistory.unshift({ id: Date.now(), action, amount, status, hash, time: new Date().toLocaleTimeString() });
   if (txHistory.length > 10) txHistory.pop();
   renderTxFeed();
   saveToCache({ txHistory });
 }
+function renderTxFeed() {
  const feed = document.getElementById('tx-feed');
  if (!feed) return;
  setText('tx-count', txHistory.length.toString());
@@ -1101,6 +1101,201 @@ async function handleFaucet() {
 // ── SHOW BALANCE ──
 
 
+
+async function loadCollateralBalance() {
+  const collEl = document.getElementById('dash-collateral');
+  const collBtn = document.getElementById('collateral-decrypt-btn');
+  if (collEl) collEl.textContent = 'Decrypting...';
+  if (collBtn) collBtn.textContent = '';
+
+  const _signer = signer || window.signer;
+  const _provider = provider || window.provider;
+
+  if (!_signer) {
+    if (collEl) collEl.textContent = 'Encrypted';
+    if (collBtn) collBtn.textContent = 'Decrypt';
+    showToast('Connect wallet first', true);
+    return;
+  }
+
+  try {
+    const userAddress = await _signer.getAddress();
+
+    // Get collateral handle from contract
+    const veil = new ethers.Contract(CONTRACT_ADDRESS, [
+      'function getCollateralHandle(address user) external returns (bytes32)'
+    ], _signer);
+
+    let collateralHandle;
+    try {
+      const veilStatic = new ethers.Contract(CONTRACT_ADDRESS, [
+        'function getCollateralHandle(address user) external returns (bytes32)'
+      ], _provider);
+      collateralHandle = await veilStatic.getCollateralHandle.staticCall(userAddress);
+    } catch(e) {
+      if (collEl) collEl.textContent = 'No position';
+      if (collBtn) collBtn.textContent = 'Decrypt';
+      return;
+    }
+
+    if (!collateralHandle || collateralHandle === ethers.ZeroHash) {
+      if (collEl) collEl.textContent = 'No position';
+      if (collBtn) collBtn.textContent = 'Decrypt';
+      return;
+    }
+
+    const prepRes = await fetch(`${BACKEND_URL}/decrypt-prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: collateralHandle, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    });
+    const prepData = await prepRes.json();
+    if (!prepData.success) throw new Error(prepData.error);
+
+    const { keypair, eip712, startTimestamp, durationDays } = prepData;
+    const { domain, types: allTypes, message } = eip712;
+    const { EIP712Domain: _, ...signTypes } = allTypes;
+    const signature = await _signer.signTypedData(
+      { ...domain, chainId: Number(domain.chainId) },
+      signTypes,
+      message
+    );
+
+    const decRes = await fetch(`${BACKEND_URL}/decrypt-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: collateralHandle, contractAddress: CONTRACT_ADDRESS, userAddress, signature, keypair, startTimestamp, durationDays }),
+    });
+    const decData = await decRes.json();
+    if (!decData.success) throw new Error(decData.error);
+
+    const raw = decData.balance ?? decData.value;
+    const collNum = parseFloat(ethers.formatUnits(raw.toString(), CWETH_DECIMALS));
+    cachedCwethBalance = collNum;
+    sessionStorage.setItem('veil_collateral', collNum.toString());
+    saveToCache({ collateral: collNum });
+
+    const collStr = collNum.toFixed(4) + ' cWETH';
+    if (collEl) collEl.textContent = collStr;
+    if (collBtn) collBtn.textContent = 'Re-decrypt';
+    setText('pos-collateral', collStr);
+    setText('repay-collateral-display', collStr);
+    setText('dash-max-borrow', (collNum * 0.66).toFixed(4) + ' cWETH');
+    setText('borrow-available', (collNum * 0.66).toFixed(4) + ' cWETH');
+
+    // Update liq price if debt cached
+    if (cachedDebtBalance !== null && cachedDebtBalance > 0) {
+      const liqRatio = (cachedDebtBalance * 1.5) / collNum;
+      const liqUsd = liqRatio * liveEthPrice;
+      setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+    }
+
+  } catch(e) {
+    console.error('[COLLATERAL DECRYPT]', e);
+    if (collEl) collEl.textContent = 'Encrypted';
+    if (collBtn) collBtn.textContent = 'Decrypt';
+    showToast(decodeRevertError(e), true);
+  }
+}
+
+
+async function loadCollateralBalance() {
+  const collEl = document.getElementById('dash-collateral');
+  const collBtn = document.getElementById('collateral-decrypt-btn');
+  if (collEl) collEl.textContent = 'Decrypting...';
+  if (collBtn) collBtn.textContent = '';
+
+  const _signer = signer || window.signer;
+  const _provider = provider || window.provider;
+
+  if (!_signer) {
+    if (collEl) collEl.textContent = 'Encrypted';
+    if (collBtn) collBtn.textContent = 'Decrypt';
+    showToast('Connect wallet first', true);
+    return;
+  }
+
+  try {
+    const userAddress = await _signer.getAddress();
+
+    // Get collateral handle from contract
+    const veil = new ethers.Contract(CONTRACT_ADDRESS, [
+      'function getCollateralHandle(address user) external returns (bytes32)'
+    ], _signer);
+
+    let collHandle;
+    try {
+      const veilStatic = new ethers.Contract(CONTRACT_ADDRESS, [
+        'function getCollateralHandle(address user) external returns (bytes32)'
+      ], _provider);
+      collHandle = await veilStatic.getCollateralHandle.staticCall(userAddress);
+    } catch(e) {
+      if (collEl) collEl.textContent = 'No position';
+      if (collBtn) collBtn.textContent = 'Decrypt';
+      return;
+    }
+
+    if (!collHandle || collHandle === ethers.ZeroHash) {
+      if (collEl) collEl.textContent = 'No position';
+      if (collBtn) collBtn.textContent = 'Decrypt';
+      return;
+    }
+
+    // Decrypt via backend
+    const prepRes = await fetch(`${BACKEND_URL}/decrypt-prepare`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: collHandle, contractAddress: CONTRACT_ADDRESS, userAddress }),
+    });
+    const prepData = await prepRes.json();
+    if (!prepData.success) throw new Error(prepData.error);
+
+    const { keypair, eip712, startTimestamp, durationDays } = prepData;
+    const { domain, types: allTypes, message } = eip712;
+    const { EIP712Domain: _, ...signTypes } = allTypes;
+    const signature = await _signer.signTypedData(
+      { ...domain, chainId: Number(domain.chainId) },
+      signTypes,
+      message
+    );
+
+    const decRes = await fetch(`${BACKEND_URL}/decrypt-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ handle: collHandle, contractAddress: CONTRACT_ADDRESS, userAddress, signature, keypair, startTimestamp, durationDays }),
+    });
+    const decData = await decRes.json();
+    if (!decData.success) throw new Error(decData.error);
+
+    const raw = decData.balance ?? decData.value;
+    const collNum = parseFloat(ethers.formatUnits(raw.toString(), CWETH_DECIMALS));
+    cachedCwethBalance = collNum;
+    sessionStorage.setItem('veil_collateral', collNum.toString());
+    saveToCache({ collateral: collNum });
+
+    const collStr = collNum.toFixed(4) + ' cWETH';
+    if (collEl) collEl.textContent = collStr;
+    if (collBtn) collBtn.textContent = 'Re-decrypt';
+    setText('pos-collateral', collStr);
+    setText('repay-collateral-display', collStr);
+    setText('dash-max-borrow', (collNum * 0.66).toFixed(4) + ' cWETH');
+    setText('borrow-available', (collNum * 0.66).toFixed(4) + ' cWETH');
+
+    // Update liq price if debt cached
+    if (cachedDebtBalance !== null && cachedDebtBalance > 0) {
+      const liqRatio = (cachedDebtBalance * 1.5) / collNum;
+      const liqUsd = liqRatio * liveEthPrice;
+      setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+    }
+
+  } catch(e) {
+    console.error('[COLLATERAL DECRYPT]', e);
+    if (collEl) collEl.textContent = 'Encrypted';
+    if (collBtn) collBtn.textContent = 'Decrypt';
+    showToast(decodeRevertError(e), true);
+  }
+}
+
 async function loadDebtBalance() {
   const debtEl = document.getElementById('dash-debt');
   const debtBtn = document.getElementById('debt-decrypt-btn');
@@ -1419,3 +1614,4 @@ window.addEventListener('load', async () => {
 </script>
 </body>
 </html>
+
