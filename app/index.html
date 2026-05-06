@@ -1323,98 +1323,41 @@ async function loadDebtBalance() {
 }
 
 async function loadLiqPrice() {
-  // Show loading state inline on dashboard
   const liqEl = document.getElementById('dash-liq-price');
   const liqBtn = document.getElementById('liq-decrypt-btn');
   if (liqEl) liqEl.textContent = 'Decrypting...';
   if (liqBtn) liqBtn.textContent = '';
-  const valEl = { textContent: '' };
-  const subEl = { textContent: '' };
 
-  const _signer = signer || window.signer;
-  const _provider = provider || window.provider;
-
-  if (!_signer) {
-    valEl.textContent = '—';
-    subEl.textContent = 'Connect wallet first';
+  if (!signer) {
+    if (liqEl) liqEl.textContent = 'Encrypted';
+    if (liqBtn) liqBtn.textContent = 'Decrypt';
+    showToast('Connect wallet first', true);
     return;
   }
 
   try {
-    const userAddress = await _signer.getAddress();
-
-    // Auto-decrypt collateral first if not cached
+    // Step 1 — always decrypt collateral fresh
+    if (liqEl) liqEl.textContent = 'Sign 1/2 — Collateral...';
+    await loadCollateralBalance();
     if (cachedCollateralBalance === null) {
-      if (liqEl) liqEl.textContent = 'Decrypting collateral...';
-      await loadCollateralBalance();
-      if (cachedCollateralBalance === null) {
-        if (liqEl) liqEl.textContent = 'Encrypted';
-        if (liqBtn) liqBtn.textContent = 'Decrypt';
-        return;
-      }
-    }
-
-    // Get encrypted debt handle from VeilLending contract
-    const veil = new ethers.Contract(CONTRACT_ADDRESS, [
-      'function getDebtHandle(address user) external view returns (bytes32)'
-    ], _provider);
-
-    let debtHandle;
-    try {
-      debtHandle = await veil.getDebtHandle(userAddress);
-    } catch(e) {
-      if (liqEl) liqEl.textContent = 'No debt';
-      if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
+      if (liqEl) liqEl.textContent = 'Encrypted';
+      if (liqBtn) liqBtn.textContent = 'Decrypt';
       return;
     }
 
-    if (!debtHandle || debtHandle === ethers.ZeroHash) {
+    // Step 2 — always decrypt debt fresh
+    if (liqEl) liqEl.textContent = 'Sign 2/2 — Debt...';
+    await loadDebtBalance();
+
+    if (cachedDebtBalance === null || cachedDebtBalance === 0) {
       setText('dash-liq-price', 'No debt');
       if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
       return;
     }
 
-    // Decrypt debt via backend
-    subEl.textContent = 'Sign wallet popup to decrypt debt...';
-
-    const prepRes = await fetch(`${BACKEND_URL}/decrypt-prepare`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle: debtHandle, contractAddress: CONTRACT_ADDRESS, userAddress }),
-    });
-    const prepData = await prepRes.json();
-    if (!prepData.success) throw new Error(prepData.error);
-
-    const { keypair, eip712, startTimestamp, durationDays } = prepData;
-    const { domain, types: allTypes, message } = eip712;
-    const { EIP712Domain: _, ...signTypes } = allTypes;
-    const signature = await _signer.signTypedData({ ...domain, chainId: Number(domain.chainId) }, signTypes, message);
-
-    const decRes = await fetch(`${BACKEND_URL}/decrypt-balance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ handle: debtHandle, contractAddress: CONTRACT_ADDRESS, userAddress, signature, keypair, startTimestamp, durationDays }),
-    });
-    const decData = await decRes.json();
-    if (!decData.success) throw new Error(decData.error);
-
-    const rawDebt = decData.balance ?? decData.value;
-    if (rawDebt === undefined || rawDebt === null) throw new Error('No debt value returned');
-
-    const debtNum = parseFloat(ethers.formatUnits(rawDebt.toString(), CWETH_DECIMALS));
-    cachedDebtBalance = debtNum;
-    sessionStorage.setItem('veil_debt', debtNum);
-
-    if (debtNum === 0) {
-      setText('dash-liq-price', 'No debt');
-      if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
-      return;
-    }
-
-    // Liquidation price = debt × 1.5 / collateral × ETH price
-    const liqRatio = (debtNum * 1.5) / cachedCwethBalance;
+    // Step 3 — calculate liq price
+    const liqRatio = (cachedDebtBalance * 1.5) / cachedCollateralBalance;
     const liqUsd = liqRatio * liveEthPrice;
-
     setText('dash-liq-price', '$' + liqUsd.toLocaleString('en-US', { maximumFractionDigits: 0 }));
     if (liqBtn) { liqBtn.textContent = 'Re-decrypt'; liqBtn.style.display = ''; }
 
@@ -1422,8 +1365,10 @@ async function loadLiqPrice() {
     console.error('[LIQ PRICE]', e);
     if (liqEl) liqEl.textContent = 'Failed';
     if (liqBtn) { liqBtn.textContent = 'Retry'; }
+    showToast(decodeRevertError(e), true);
   }
 }
+
 
 async function loadCwethBalance() {
  openModal('balance-modal');
