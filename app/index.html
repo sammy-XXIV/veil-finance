@@ -613,7 +613,7 @@ let signer = null;
 let txHistory = [];
 let liveEthPrice = 3000;
 let cachedCwethBalance = null; // wallet balance
-let cachedCollateralBalance = sessionStorage.getItem('veil_collateral') ? parseFloat(sessionStorage.getItem('veil_collateral')) : null; // deposited collateral
+let cachedCollateralBalance = null; // deposited collateral — only set after user decrypts
 let cachedDebtBalance = sessionStorage.getItem('veil_debt') ? parseFloat(sessionStorage.getItem('veil_debt')) : null;
 
 // ── HELPERS ──
@@ -736,10 +736,9 @@ async function loadFromCache(address) {
     const data = await res.json();
     if (!data.success) return;
 
-    if (data.collateral !== null) {
-      cachedCollateralBalance = parseFloat(data.collateral);
-      sessionStorage.setItem('veil_collateral', data.collateral);
-    }
+    // Restore to memory only — don't display until user explicitly decrypts
+    // Don't auto-load collateral — user must explicitly decrypt
+    // if (data.collateral !== null) { cachedCollateralBalance = ... }
     if (data.debt !== null) {
       cachedDebtBalance = parseFloat(data.debt);
       sessionStorage.setItem('veil_debt', data.debt);
