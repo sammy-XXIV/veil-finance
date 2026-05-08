@@ -190,10 +190,3 @@ Once Zama ships:
 - Render (backend hosting)
 
 ---
-
-## Built For
-
-Zama Developer Program Season 2 — Builder Track
-Deadline: May 10, 2026
-
-*Built by SAMMY*
